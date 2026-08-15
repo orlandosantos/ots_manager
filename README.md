@@ -19,7 +19,7 @@ OTS Manager simplifies and standardizes OpenTAKServer administration by providin
 - provisioning multiple users from a JSON file;
 - exporting a consolidated JSON report.
 
-> **Version:** 2.0  
+> **Version:** 1.0  
 > **Author:** Orlando Nascimento Santos  
 > **Email:** [onascimento@gmail.com](mailto:onascimento@gmail.com)  
 > **License:** MIT
