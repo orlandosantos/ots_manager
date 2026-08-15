@@ -1,0 +1,28 @@
+[
+  {
+    "username": "operador_alpha",
+    "password": "SenhaForte123!",
+    "email": "alpha@empresa.com",
+    "administrator": false,
+    "groups": ["CSAR", "Resgate"],
+    "app": "android"
+  },
+  {
+    "username": "operador_bravo",
+    "password": "SenhaForte456!",
+    "email": "bravo@empresa.com",
+    "administrator": false,
+    "groups": ["CSAR"],
+    "app": "iphone"
+  },
+  {
+    "username": "operador_temporario",
+    "password": "TempPassword789!",
+    "email": "temp@empresa.com",
+    "administrator": false,
+    "groups": ["Operacoes"],
+    "app": "android",
+    "expiration": 30,
+    "max_uses": 1
+  }
+]
