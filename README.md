@@ -68,7 +68,7 @@ ots-manager/
 Set the OTS connection variables before running the utility:
 
 ```bash
-export OTS_URL="http://164.152.57.64:5000"
+export OTS_URL="http://opentakserver.example.com:5000"
 export OTS_USER="admin"
 export OTS_PASS="your_password_here"
 ```
