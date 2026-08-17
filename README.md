@@ -314,9 +314,9 @@ python ots_manager.py link -u "pilot1" -g "Quick_Response_Force" -d IN
 python ots_manager.py --help
 python ots_manager.py create-user --help
 python ots_manager.py qr --help
-
-### 7.2 List groups
 ```
+### 7.2 List groups
+
 ```bash
 python ots_manager.py list-groups
 ```
