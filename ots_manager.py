@@ -89,6 +89,191 @@ def create_group(group_name):
     return False
 
 
+def list_groups():
+  """Retorna lista de nomes de grupos existentes no OpenTAKServer."""
+  url = f"{OTS_URL}/api/groups"
+  try:
+    response = session.get(url, timeout=10)
+    if response.status_code == 200:
+      try:
+        data = response.json()
+      except Exception:
+        data = None
+
+      groups = []
+      if isinstance(data, dict):
+        # tenta localizar chaves comuns
+        if "groups" in data and isinstance(data["groups"], list):
+          groups = data["groups"]
+        elif "results" in data and isinstance(data["results"], list):
+          groups = data["results"]
+        else:
+          for v in data.values():
+            if isinstance(v, list):
+              groups = v
+              break
+      elif isinstance(data, list):
+        groups = data
+
+      names = []
+      for g in groups:
+        if isinstance(g, str):
+          names.append(g)
+        elif isinstance(g, dict):
+          name = g.get("name") or g.get("group") or g.get("groupname")
+          if name:
+            names.append(name)
+      return names
+    else:
+      print(f"[-] Erro ao listar grupos: {response.status_code} - {response.text}")
+      return []
+  except Exception as e:
+    print(f"[-] Erro ao conectar para listar grupos: {e}")
+    return []
+
+
+def _normalize_admin_flag(value):
+  """Converte diferentes representações de administrador para booleano."""
+  if isinstance(value, bool):
+    return value
+  if isinstance(value, (int, float)):
+    return bool(value)
+  if isinstance(value, str):
+    normalized = value.strip().lower()
+    if normalized in ["1", "true", "yes", "admin", "administrator"]:
+      return True
+    if normalized in ["0", "false", "no"]:
+      return False
+  return False
+
+
+def _normalize_last_login(value):
+  """Converte datas/epoch em ISO string legível para exibição."""
+  if value is None or value == "" or str(value).lower() in ["none", "null"]:
+    return None
+
+  if isinstance(value, (int, float)):
+    try:
+      return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+    except Exception:
+      return str(value)
+
+  if isinstance(value, str):
+    text = value.strip()
+    if not text:
+      return None
+    if text.isdigit() or text.replace(".", "", 1).isdigit():
+      try:
+        return datetime.fromtimestamp(float(text), tz=timezone.utc).isoformat()
+      except Exception:
+        pass
+    if text.endswith("Z"):
+      text = text[:-1] + "+00:00"
+    try:
+      return datetime.fromisoformat(text).astimezone(timezone.utc).isoformat()
+    except Exception:
+      return text
+
+  return str(value)
+
+
+def list_users():
+  """Lista usuários e tenta extrair admin e último login quando disponíveis."""
+  endpoints = [
+      f"{OTS_URL}/api/users",
+      f"{OTS_URL}/api/user",
+      f"{OTS_URL}/api/user/list",
+  ]
+
+  for endpoint in endpoints:
+    try:
+      response = session.get(endpoint, timeout=10)
+      if response.status_code != 200:
+        continue
+
+      try:
+        payload = response.json()
+      except Exception:
+        payload = None
+
+      item_list = []
+      if isinstance(payload, list):
+        item_list = payload
+      elif isinstance(payload, dict):
+        for key in ["users", "results", "data", "items", "records"]:
+          value = payload.get(key)
+          if isinstance(value, list):
+            item_list = value
+            break
+        if not item_list and isinstance(payload.get("user"), dict):
+          item_list = [payload.get("user")]
+
+      users = []
+      for entry in item_list:
+        if not isinstance(entry, dict):
+          continue
+
+        username = (
+            entry.get("username")
+            or entry.get("user")
+            or entry.get("login")
+            or entry.get("name")
+        )
+        if not username:
+          continue
+
+        # Tentativa primeira: flags diretas
+        admin_field = (
+            entry.get("administrator")
+            or entry.get("admin")
+            or entry.get("is_admin")
+            or entry.get("isAdministrator")
+            or entry.get("role")
+        )
+        admin = _normalize_admin_flag(admin_field)
+
+        # Se existir uma lista de roles, inspeciona nome e permissões
+        roles_list = entry.get("roles") or entry.get("role_list") or entry.get("roles_list")
+        if isinstance(roles_list, list):
+          for r in roles_list:
+            if isinstance(r, dict):
+              rname = str(r.get("name") or "").strip().lower()
+              if rname and ("administrator" in rname or rname == "admin" or "organ" in rname):
+                admin = True
+                break
+              perms = r.get("permissions") or []
+              if isinstance(perms, list):
+                for p in perms:
+                  if "administrator" in str(p).lower() or "admin" in str(p).lower():
+                    admin = True
+                    break
+                if admin:
+                  break
+
+        last_login = _normalize_last_login(
+            entry.get("last_login")
+            or entry.get("lastLogin")
+            or entry.get("last_login_at")
+            or entry.get("last_login_time")
+            or entry.get("last_seen")
+            or entry.get("logged_in_at")
+        )
+
+        users.append({
+            "username": username,
+            "admin": admin,
+            "last_login": last_login,
+        })
+
+      if users:
+        return users
+
+    except Exception:
+      continue
+
+  return []
+
+
 def create_user(username, password, email="", is_admin=False):
   """Cria um usuário no OpenTAKServer (POST /api/user/add)."""
   url = f"{OTS_URL}/api/user/add"
@@ -119,8 +304,12 @@ def create_user(username, password, email="", is_admin=False):
 
 
 def add_user_to_group(username, group_name, direction="BOTH"):
-  """Associa um usuário a um grupo no OpenTAKServer (IN e OUT)."""
+  """Associa um usuário a um grupo no OpenTAKServer (IN, OUT ou BOTH)."""
   url = f"{OTS_URL}/api/users/groups"
+  direction = str(direction).upper()
+  if direction not in ["IN", "OUT", "BOTH"]:
+    direction = "BOTH"
+
   directions_to_process = ["IN", "OUT"] if direction == "BOTH" else [direction]
   success = True
 
@@ -149,10 +338,7 @@ def add_user_to_group(username, group_name, direction="BOTH"):
 
 
 def parse_expiration(exp_val):
-  """Converte expiração em Unix Epoch timestamp se informada.
-
-  Caso contrário, retorna None.
-  """
+  """Converte expiração em Unix Epoch timestamp se informada."""
   if exp_val is None:
     return None
   try:
@@ -255,29 +441,60 @@ def save_qr_code_image(qr_data, output_path):
   print(f"[+] QR Code salvo em: {output_path}")
 
 
+def parse_group_entry(item):
+  """Normaliza entradas de grupo vindas de strings CLI ('CSAR:IN' ou 'CSAR')
+
+  ou objetos JSON ({"name": "CSAR", "direction": "IN"}).
+  Retorna tupla: (group_name, direction).
+  """
+  if isinstance(item, dict):
+    name = item.get("name") or item.get("group")
+    direction = item.get("direction") or item.get("directions") or "BOTH"
+    return (name, direction.upper())
+  elif isinstance(item, str):
+    if ":" in item:
+      parts = item.split(":", 1)
+      dir_candidate = parts[1].upper()
+      if dir_candidate in ["IN", "OUT", "BOTH"]:
+        return (parts[0], dir_candidate)
+      return (item, "BOTH")
+    return (item, "BOTH")
+  return (None, "BOTH")
+
+
 def process_batch_list(
     data_list, output_summary_file="resultado_qr_codes.json"
 ):
-  """Processa lote de usuários/grupos e exporta arquivos PNG e JSON consolidado."""
+  """Processa lote de usuários/grupos com suporte a direções individuais."""
   os.makedirs("qrcodes", exist_ok=True)
   summary_results = []
 
+  # 1. Coleta grupos únicos para criação prévia
   groups_to_create = set()
   for item in data_list:
-    for g in item.get("groups", []):
-      groups_to_create.add(g)
+    raw_groups = item.get("groups", [])
+    for g in raw_groups:
+      g_name, _ = parse_group_entry(g)
+      if g_name:
+        if str(g_name).upper() == "ALL":
+          existing = list_groups()
+          for ex in existing:
+            groups_to_create.add(ex)
+        else:
+          groups_to_create.add(g_name)
 
   print("\n--- Processando Grupos ---")
   for group_name in groups_to_create:
     create_group(group_name)
 
+  # 2. Criação de Usuários e Vínculos
   print("\n--- Processando Usuários e Gerando QR Codes ---")
   for user_info in data_list:
     username = user_info.get("username")
     password = user_info.get("password")
     email = user_info.get("email", "")
     is_admin = user_info.get("administrator", False)
-    user_groups = user_info.get("groups", [])
+    raw_groups = user_info.get("groups", [])
     app_type = user_info.get("app", "android").lower()
     max_uses = user_info.get("max_uses")
     expiration = user_info.get("expiration")
@@ -288,8 +505,15 @@ def process_batch_list(
 
     created = create_user(username, password, email, is_admin)
     if created:
-      for group_name in user_groups:
-        add_user_to_group(username, group_name, direction="BOTH")
+      for g in raw_groups:
+        g_name, g_dir = parse_group_entry(g)
+        if g_name:
+          if str(g_name).upper() == "ALL":
+            existing = list_groups()
+            for ex in existing:
+              add_user_to_group(username, ex, direction=g_dir)
+          else:
+            add_user_to_group(username, g_name, direction=g_dir)
 
       exp_ts = parse_expiration(expiration)
       qr_string = get_qr_string(
@@ -343,7 +567,16 @@ def main():
   )
   cmd_user.add_argument("-p", "--password", required=True, help="Senha")
   cmd_user.add_argument("-e", "--email", default="", help="E-mail")
-  cmd_user.add_argument("-g", "--groups", nargs="*", default=[], help="Grupos")
+  cmd_user.add_argument(
+      "-g",
+      "--groups",
+      nargs="*",
+      default=[],
+      help=(
+          "Lista de grupos. Suporta direção individual: 'GRUPO:IN',"
+          " 'GRUPO:OUT' ou 'GRUPO:BOTH' (padrão: BOTH)"
+      ),
+  )
   cmd_user.add_argument(
       "--admin", action="store_true", help="Perfil Administrador"
   )
@@ -356,19 +589,13 @@ def main():
   cmd_user.add_argument(
       "--exp",
       default=None,
-      help=(
-          "Data de expiração (YYYY-MM-DD ou dias). Se omitido, não é enviado ao"
-          " servidor."
-      ),
+      help="Data de expiração (YYYY-MM-DD ou dias). Se omitido, não é enviado.",
   )
   cmd_user.add_argument(
       "--max",
       type=int,
       default=None,
-      help=(
-          "Quantidade máxima de ativações. Se omitido, não é enviado ao"
-          " servidor."
-      ),
+      help="Máximo de ativações. Se omitido, não é enviado.",
   )
   cmd_user.add_argument("--save-qr", help="Caminho do arquivo PNG de saída")
 
@@ -386,16 +613,13 @@ def main():
   cmd_qr.add_argument(
       "--exp",
       default=None,
-      help=(
-          "Expiração (YYYY-MM-DD ou dias). Se omitido, não é enviado ao"
-          " servidor."
-      ),
+      help="Expiração (YYYY-MM-DD ou dias). Se omitido, não é enviado.",
   )
   cmd_qr.add_argument(
       "--max",
       type=int,
       default=None,
-      help="Máximo de ativações. Se omitido, não é enviado ao servidor.",
+      help="Máximo de ativações. Se omitido, não é enviado.",
   )
   cmd_qr.add_argument("--save-qr", help="Caminho do arquivo PNG de saída")
 
@@ -404,6 +628,16 @@ def main():
       "create-group", help="Cria um grupo via CLI"
   )
   cmd_group.add_argument("-n", "--name", required=True, help="Nome do grupo")
+
+  # Comando: list-groups
+  cmd_list = subparsers.add_parser(
+      "list-groups", help="Lista grupos existentes no OpenTAKServer"
+  )
+
+  # Comando: list-users
+  cmd_users = subparsers.add_parser(
+      "list-users", help="Lista usuários existentes com admin e último login"
+  )
 
   # Comando: link
   cmd_link = subparsers.add_parser("link", help="Associa usuário a um grupo")
@@ -443,11 +677,23 @@ def main():
     sys.exit(1)
 
   if args.command == "create-user":
-    for g in args.groups:
-      create_group(g)
+    parsed_groups = [parse_group_entry(g) for g in args.groups]
+
+    # Cria os grupos primeiro (ignora ALL, que será expandido)
+    for g_name, _ in parsed_groups:
+      if g_name and str(g_name).upper() != "ALL":
+        create_group(g_name)
+
+    # Cria o usuário e associa nas direções especificadas
     if create_user(args.username, args.password, args.email, args.admin):
-      for g in args.groups:
-        add_user_to_group(args.username, g, direction="BOTH")
+      for g_name, g_dir in parsed_groups:
+        if g_name:
+          if str(g_name).upper() == "ALL":
+            existing = list_groups()
+            for ex in existing:
+              add_user_to_group(args.username, ex, direction=g_dir)
+          else:
+            add_user_to_group(args.username, g_name, direction=g_dir)
 
       exp_ts = parse_expiration(args.exp)
       qr_string = get_qr_string(
@@ -477,8 +723,36 @@ def main():
   elif args.command == "create-group":
     create_group(args.name)
 
+  elif args.command == "list-groups":
+    groups = list_groups()
+    if groups:
+      print("[+] Grupos existentes:")
+      for g in groups:
+        print(f" - {g}")
+    else:
+      print("[!] Nenhum grupo encontrado ou erro ao listar.")
+
+  elif args.command == "list-users":
+    users = list_users()
+    if users:
+      print("[+] Usuários existentes:")
+      for user in users:
+        admin_flag = "SIM" if user.get("admin") else "NÃO"
+        last_login = user.get("last_login") or "N/A"
+        print(
+            f" - {user.get('username')} | admin={admin_flag} | "
+            f"ultimo_login={last_login}"
+        )
+    else:
+      print("[!] Nenhum usuário encontrado ou a API não expõe esse dado.")
+
   elif args.command == "link":
-    add_user_to_group(args.username, args.group, direction=args.direction)
+    if str(args.group).upper() == "ALL":
+      existing = list_groups()
+      for ex in existing:
+        add_user_to_group(args.username, ex, direction=args.direction)
+    else:
+      add_user_to_group(args.username, args.group, direction=args.direction)
 
   elif args.command == "batch":
     try:

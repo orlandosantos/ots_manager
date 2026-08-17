@@ -1,0 +1,7 @@
+requests>=2.0
+qrcode>=7.0
+Pillow>=8.0
+
+# Optional (developer): uncomment to enable test tools
+# pytest
+# pytest-cov

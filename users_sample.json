@@ -1,28 +1,56 @@
 [
   {
-    "username": "operador_alpha",
-    "password": "SenhaForte123!",
-    "email": "alpha@empresa.com",
-    "administrator": false,
-    "groups": ["CSAR", "Resgate"],
+    "username": "operator_alpha",
+    "password": "SecurePassword123!",
+    "email": "alpha@example.com",
+    "administrator": true,
+    "groups": [
+      { "name": "CSAR", "direction": "BOTH" },
+      { "name": "Rescue", "direction": "IN" },
+      { "name": "Command", "direction": "OUT" }
+    ],
     "app": "android"
   },
   {
-    "username": "operador_bravo",
-    "password": "SenhaForte456!",
-    "email": "bravo@empresa.com",
+    "username": "operator_bravo",
+    "password": "SecurePassword456!",
+    "email": "bravo@example.com",
     "administrator": false,
-    "groups": ["CSAR"],
+    "groups": [
+      "CSAR",
+      { "name": "Support", "direction": "IN" }
+    ],
     "app": "iphone"
   },
   {
-    "username": "operador_temporario",
+    "username": "temporary_guest",
     "password": "TempPassword789!",
-    "email": "temp@empresa.com",
+    "email": "guest@example.com",
     "administrator": false,
-    "groups": ["Operacoes"],
+    "groups": [
+      { "name": "Operations", "direction": "IN" }
+    ],
     "app": "android",
     "expiration": 30,
     "max_uses": 1
+  },
+  {
+    "username": "global_one",
+    "password": "GPass1!",
+    "groups": ["ALL:OUT"],
+    "app": "android"
+  },
+  {
+    "username": "global_two",
+    "password": "GPass2!",
+    "groups": ["ALL:IN"],
+    "app": "iphone",
+    "expiration": 14
+  },
+  {
+    "username": "global_three",
+    "password": "GPass3!",
+    "groups": ["ALL"],
+    "app": "android"
   }
 ]

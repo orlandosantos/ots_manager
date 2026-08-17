@@ -1,0 +1,47 @@
+# Byte-compiled / cached
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# pytest
+.pytest_cache/
+.cache/
+coverage.xml
+.coverage
+htmlcov/
+
+# local runtime artifacts
+qrcodes/
+resultado_qr_codes.json
+
+# logs and temp
+*.log
+tmp/
+temp/
+
+# secrets and env
+.env
+.env.*
+
+# OS-specific
+Thumbs.db
