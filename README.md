@@ -281,7 +281,7 @@ python ots_manager.py create-user -u "tac_commander" -p "AdminPass!" \\
 
 # Using the special group name `ALL`
 When you want to associate a user with every group present on the OpenTAKServer, use `ALL` as the group value. The utility expands `ALL` into the full list returned by the server and performs the requested associations. You can also combine it with a direction, such as `ALL:IN` or `ALL:OUT`.
-
+```
 ```bash
 # Create a user and associate with every group on the server (default direction: BOTH)
 python ots_manager.py create-user -u "global_user" -p "Pass123!" -g ALL --app android
@@ -297,7 +297,6 @@ python ots_manager.py create-user -u "global_user_2" -p "Pass123!" -g ALL:OUT --
 
 # Run a batch where every record uses ALL or ALL:OUT/ALL:IN (see JSON example below)
 python ots_manager.py batch -f usuarios_all.json -o resultado_all.json
-```
 ```
 
 ### 6.4 Direction when linking an existing user
@@ -317,14 +316,13 @@ python ots_manager.py create-user --help
 python ots_manager.py qr --help
 
 ### 7.2 List groups
-
+```
 ```bash
 python ots_manager.py list-groups
 ```
 
 The command lists the groups returned by the OpenTAKServer. You can use the special group name `ALL` with `-g` (for example `-g ALL`) when calling `create-user`, `link`, or when a batch record includes `"groups": ["ALL"]`; the utility will expand `ALL` into the full set of groups and perform the requested associations for each.
 
-```
 
 ### List users (admin and last_login)
 
