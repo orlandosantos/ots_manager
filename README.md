@@ -16,12 +16,21 @@
 
 ## Contents
 
+- [What's New in Version 1.1.0](#whats-new-in-version-110)
 - [What's New in Version 1.0.1](#whats-new-in-version-101)
 - [Overview](#1-overview)
 - [CLI commands](#7-cli-commands)
 - [Batch provisioning](#8-batch-provisioning)
 - [Quick reference](#14-quick-reference)
 - [License](#license)
+
+## What's New in Version 1.1.0
+
+- **User lifecycle commands:** new `delete-user`, `deactivate-user`, and `activate-user` commands (`POST /api/user/delete`, `POST /api/user/deactivate`, `POST /api/user/activate`). Each supports a single user via `-u/--username` or a batch via `-f/--file`.
+- **Batch merged into `create-user`:** the standalone `batch` command was removed. Batch provisioning is now triggered with `create-user -f <file> [-o output.json]`, keeping the exact same behavior (group creation, user creation, group associations, and QR Code generation).
+- **Original JSON reused for lifecycle batches:** `delete-user -f`, `deactivate-user -f`, and `activate-user -f` accept the same JSON file used for creation (e.g. `users_sample.json`); only the `username` field of each record is used, all other fields (`password`, `groups`, `app`, etc.) are ignored.
+- **`-u`/`-f` are mutually exclusive:** `create-user`, `delete-user`, `deactivate-user`, and `activate-user` require exactly one of `-u/--username` (single) or `-f/--file` (batch).
+- **Warning on ignored single-mode flags:** when `create-user -f` is used together with single-mode-only flags (`-p`, `-e`, `-g`, `--admin`, `--app`, `--exp`, `--max`, `--save-qr`), the CLI prints a warning listing exactly which flags will be ignored, instead of silently discarding them.
 
 ## What's New in Version 1.0.1
 
@@ -213,6 +222,9 @@ Best practices:
 | Create group | `/api/groups` | `POST` | `name` | Yes |
 | Create user | `/api/user/add` | `POST` | `username`, `password`, `confirm_password`, `email`, `administrator` | According to OTS configuration |
 | Link group | `/api/users/groups` | `PUT` | `username`, `groups[]`, `direction` | According to OTS configuration |
+| Delete user | `/api/user/delete` | `POST` | `username` | According to OTS configuration |
+| Deactivate user | `/api/user/deactivate` | `POST` | `username` | According to OTS configuration |
+| Activate user | `/api/user/activate` | `POST` | `username` | According to OTS configuration |
 | QR Android | `/api/atak_qr_string` | `POST` | `username`, `exp`, `nbf`, `max` | Yes |
 | QR iPhone | `/api/itak_qr_string` | `GET` | defined by the server | Authenticated session |
 
@@ -228,11 +240,14 @@ The table below consolidates the fields accepted pelo `ots_manager.py`. Fields m
 | Link group — `/api/users/groups` | `username`, `groups[]` with at least one group, `direction` | In the CLI, `direction` is optional and defaults to `BOTH`, performing one `IN` and onand `OUT` association. |
 | QR Android — `/api/atak_qr_string` | `username` | ``exp` and `max` are **optional**. `nbf` is calculated automatically only when `exp` is provided. If `exp` and `max` are omitted or `null`, they are not sent and the server default policy applies. |
 | QR iPhone — `/api/itak_qr_string` | Authenticated session | The `GET` request has no user-supplied fields; the configuration is returned by the server. |
-| CLI `create-user` | `--username`, `--password` | `--email`, `--groups`, `--admin`, `--app`, `--exp`, `--max` e `--save-qr` are optional. `--app` defaults to `android`; `--admin` defaults to false. |
+| CLI `create-user` | `--username` + `--password` (single mode) **or** `--file` (batch mode) | `--username`/`--file` are mutually exclusive. `--email`, `--groups`, `--admin`, `--app`, `--exp`, `--max` and `--save-qr` apply to single mode and are optional; `--app` defaults to `android`, `--admin` defaults to false. `--output` applies to batch mode and defaults to `resultado_qr_codes.json`. If any single-mode flag is passed together with `--file`, the CLI prints a warning naming the ignored flags and proceeds with the batch. |
 | CLI `qr` | `--username` | `--app`, `--exp`, `--max` e `--save-qr` are optional. `--app` defaults to `android`. |
 | CLI `create-group` | `--name` | Nenhum. |
 | CLI `link` | `--username`, `--group` | `--direction` is optional and defaults to `BOTH`. |
-| CLI `batch` | `--file` | `--output` is optional and defaults to `resultado_qr_codes.json`. Dentro de cada registro, `username` e `password` are required; `email`, `administrator`, `groups`, `app`, `expiration` and `max_uses` are optional. |
+| CLI `batch` *(removed — merged into `create-user`)* | — | Batch mode is no longer a standalone command. Use `create-user -f <file> [-o output.json]` instead of the old `batch -f <file> [-o output.json]`; behavior is unchanged (creates groups, users, group associations, and QR Codes for every record). |
+| CLI `delete-user` | `--username` (single) **or** `--file` (batch) | `--output` is optional (batch only); when provided, writes a JSON summary `[{"username": ..., "deleted": true/false}, ...]`. `--file` accepts the same JSON used by `create-user -f`, reading only the `username` field of each record. |
+| CLI `deactivate-user` | `--username` (single) **or** `--file` (batch) | Same pattern as `delete-user`; batch summary uses the `deactivated` key instead of `deleted`. |
+| CLI `activate-user` | `--username` (single) **or** `--file` (batch) | Same pattern as `delete-user`; batch summary uses the `activated` key instead of `deleted`. |
 
 #### Batch user field summary
 
@@ -248,6 +263,14 @@ The table below consolidates the fields accepted pelo `ots_manager.py`. Fields m
 | `max_uses` | **No** | Activation limit; when absent or `null`, no limit is sent. |
 
 > **Important:** `email`, `expiration`, and `max_uses` are not required fields. The absence of these fields does not prevent user creation or QR Code generation; in these cases, the server applies its default values and policies. However, `username` and `password` are essential for each user. The field `confirm_password` is required by the API, but is generated automatically by the script and does not need to be supplied separately in the CLI or JSON file.
+
+#### Batch field summary for `delete-user`, `deactivate-user`, and `activate-user`
+
+These three commands accept the exact same JSON file used by `create-user -f` (e.g. `users_sample.json`). Only the `username` field of each record is read; every other field (`password`, `groups`, `app`, `expiration`, `max_uses`, etc.) is ignored. A plain list of strings, e.g. `["user1", "user2"]`, is also accepted.
+
+| Field JSON | Required? | Notes |
+|---|---:|---|
+| `username` | **Yes** | The only field used. Records without it are skipped with a warning printed to stdout. |
 
 ### 6.2 Successful responses
 
@@ -308,7 +331,7 @@ python ots_manager.py link -u "global_user" -g ALL --direction IN
 python ots_manager.py create-user -u "global_user_2" -p "Pass123!" -g ALL:OUT --app android
 
 # Run a batch where every record uses ALL or ALL:OUT/ALL:IN (see JSON example below)
-python ots_manager.py batch -f usuarios_all.json -o resultado_all.json
+python ots_manager.py create-user -f usuarios_all.json -o resultado_all.json
 ```
 ```
 
@@ -494,7 +517,52 @@ python ots_manager.py link -u "global_user" -g ALL --direction OUT
 
 `ALL` without a suffix uses `BOTH`; `ALL:IN` uses only `IN`; `ALL:OUT` uses only `OUT`.
 
+### 7.11 Delete a user
+
+`delete-user` calls `POST /api/user/delete`. It accepts exactly one of `-u/--username` (single user) or `-f/--file` (batch):
+
+```bash
+# Delete a single user
+python ots_manager.py delete-user -u "piloto1"
+
+# Delete every user listed in a JSON file (accepts the same file used by create-user -f;
+# only the "username" field of each record is read, everything else is ignored)
+python ots_manager.py delete-user -f users_sample.json -o resultado_delecao.json
+```
+
+If `-o/--output` is provided in batch mode, a summary is written with the shape `[{"username": "...", "deleted": true|false}, ...]`. A `404` response from the server (user not found) is treated as an already-achieved end state and reported as success.
+
+### 7.12 Deactivate a user
+
+`deactivate-user` calls `POST /api/user/deactivate` and follows the exact same `-u`/`-f`/`-o` pattern as `delete-user`:
+
+```bash
+# Deactivate a single user
+python ots_manager.py deactivate-user -u "piloto1"
+
+# Deactivate every user listed in a JSON file
+python ots_manager.py deactivate-user -f users_sample.json -o resultado_desativacao.json
+```
+
+The batch summary uses the key `deactivated` instead of `deleted`.
+
+### 7.13 Activate a user
+
+`activate-user` calls `POST /api/user/activate` and follows the exact same `-u`/`-f`/`-o` pattern:
+
+```bash
+# Activate a single user
+python ots_manager.py activate-user -u "piloto1"
+
+# Activate every user listed in a JSON file
+python ots_manager.py activate-user -f users_sample.json -o resultado_ativacao.json
+```
+
+The batch summary uses the key `activated` instead of `deleted`.
+
 ## 8. Batch provisioning
+
+> This section covers creation batches, triggered with `create-user -f <file>` (the standalone `batch` command was removed in Version 1.1.0). For batch deletion, deactivation, or activation — which reuse the same JSON file but only read the `username` field — see [7.11](#711-delete-a-user), [7.12](#712-deactivate-a-user), and [7.13](#713-activate-a-user).
 
 ### 8.1 File `usuarios.json`
 
@@ -564,8 +632,10 @@ As chaves `expiration` and `max_uses` are optional. Se estiverem ausentes ou com
 
 ### 8.2 Execution
 
+> **Note:** the standalone `batch` command was removed in Version 1.1.0. Batch provisioning is now triggered through `create-user -f <file> [-o <output>]`.
+
 ```bash
-python ots_manager.py batch \
+python ots_manager.py create-user \
   -f usuarios.json \
   -o resultado_qr_codes.json
 ```
@@ -621,7 +691,7 @@ When processed, each `ALL:OUT` or `ALL:IN` entry is expanded to the current grou
 ```
 
 ```bash
-python ots_manager.py batch -f usuarios_all.json -o resultado_all.json
+python ots_manager.py create-user -f usuarios_all.json -o resultado_all.json
 ```
 
 `ALL:OUT` uses only `OUT`; `ALL:IN` uses only `IN`; `ALL` without a suffix uses `BOTH`.
@@ -833,8 +903,8 @@ python ots_manager.py create-group -n Patrulha
 # Associação bidirecional
 python ots_manager.py link -u piloto1 -g Patrulha
 
-# Lote
-python ots_manager.py batch -f usuarios.json -o resultado_qr_codes.json
+# Batch (create-user in batch mode, replaces the old 'batch' command)
+python ots_manager.py create-user -f usuarios.json -o resultado_qr_codes.json
 
 # Validação sintática
 python -m py_compile ots_manager.py
@@ -849,6 +919,18 @@ python ots_manager.py create-user -u global_user_in -p 'Pass123!' -g ALL:IN --ap
 
 # Associate an existing user with every group
 python ots_manager.py link -u global_user -g ALL --direction BOTH
+
+# Delete a user (single or batch)
+python ots_manager.py delete-user -u piloto1
+python ots_manager.py delete-user -f usuarios.json -o resultado_delecao.json
+
+# Deactivate a user (single or batch)
+python ots_manager.py deactivate-user -u piloto1
+python ots_manager.py deactivate-user -f usuarios.json -o resultado_desativacao.json
+
+# Activate a user (single or batch)
+python ots_manager.py activate-user -u piloto1
+python ots_manager.py activate-user -f usuarios.json -o resultado_ativacao.json
 ```
 
 ## 15. Appendix: code structure
@@ -861,6 +943,9 @@ The `ots_manager.py` file is organized around the following functions:
 | `login()` | Authenticates and updates headers |
 | `create_group()` | Creates or confirms a group |
 | `create_user()` | Creates or confirms a user |
+| `delete_user()` | Removes a user (`POST /api/user/delete`) |
+| `deactivate_user()` | Deactivates a user (`POST /api/user/deactivate`) |
+| `activate_user()` | Activates a user (`POST /api/user/activate`) |
 | `add_user_to_group()` | Associates groups in `IN`, `OUT` ou `BOTH` |
 | `parse_expiration()` | Converts days/date to Unix Epoch |
 | `get_qr_string()` | Gets the Android or iPhone configuration |
@@ -869,7 +954,11 @@ The `ots_manager.py` file is organized around the following functions:
 | `list_users()` | Retrieves users and summarizes admin/last-login data |
 | `list_groups()` | Retrieves the current server groups |
 | `list_users()` | Lists users, administrator status, and last login |
-| `process_batch_list()` | Orchestrates batch provisioning and expands `ALL` |
+| `extract_usernames()` | Extracts only the `username` field from a batch (accepts the original creation JSON) |
+| `process_batch_list()` | Orchestrates batch provisioning and expands `ALL` (invoked by `create-user -f`) |
+| `process_batch_delete()` | Orchestrates batch user deletion |
+| `process_batch_deactivate()` | Orchestrates batch user deactivation |
+| `process_batch_activate()` | Orchestrates batch user activation |
 | `main()` | Defines the CLI and dispatches commands |
 
 ### Conclusion
@@ -878,7 +967,7 @@ OTS Manager reduces manual tasks and standardizes OpenTAKServer provisioning. Au
 
 ---
 
-**OTS Manager Operations Manual — Version 1.0.1**  
+**OTS Manager Operations Manual — Version 1.1.0**  
 **Created by Orlando Nascimento Santos — onascimento@gmail.com**
 
 ## License

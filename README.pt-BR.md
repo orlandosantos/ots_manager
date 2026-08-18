@@ -7,12 +7,21 @@
 
 ## Conteúdo
 
+- [Novidades da versão 1.1.0](#novidades-da-versão-110)
 - [Novidades da versão 1.0.1](#novidades-da-versão-101)
 - [Visão geral](#1-visão-geral)
 - [Comandos da CLI](#7-comandos-da-cli)
 - [Provisionamento em lote](#8-provisionamento-em-lote)
 - [Referência rápida](#14-referência-rápida)
 - [Licença](#licença)
+
+## Novidades da versão 1.1.0
+
+- **Comandos de ciclo de vida do usuário:** novos comandos `delete-user`, `deactivate-user` e `activate-user` (`POST /api/user/delete`, `POST /api/user/deactivate`, `POST /api/user/activate`). Cada um suporta um único usuário via `-u/--username` ou lote via `-f/--file`.
+- **Lote incorporado ao `create-user`:** o comando independente `batch` foi removido. O provisionamento em lote agora é acionado com `create-user -f <arquivo> [-o saida.json]`, mantendo exatamente o mesmo comportamento (criação de grupos, criação de usuários, vínculos de grupo e geração de QR Codes).
+- **Reaproveitamento do JSON original nos lotes de ciclo de vida:** `delete-user -f`, `deactivate-user -f` e `activate-user -f` aceitam o mesmo arquivo JSON usado na criação (ex.: `users_sample.json`); somente o campo `username` de cada registro é utilizado, os demais campos (`password`, `groups`, `app`, etc.) são ignorados.
+- **`-u`/`-f` são mutuamente exclusivos:** `create-user`, `delete-user`, `deactivate-user` e `activate-user` exigem exatamente um entre `-u/--username` (individual) ou `-f/--file` (lote).
+- **Aviso para flags ignoradas no modo lote:** quando `create-user -f` é usado junto com flags exclusivas do modo individual (`-p`, `-e`, `-g`, `--admin`, `--app`, `--exp`, `--max`, `--save-qr`), a CLI imprime um aviso listando exatamente quais flags serão ignoradas, em vez de descartá-las silenciosamente.
 
 ## Novidades da versão 1.0.1
 
@@ -202,6 +211,9 @@ Boas práticas:
 | Criar grupo | `/api/groups` | `POST` | `name` | Sim |
 | Criar usuário | `/api/user/add` | `POST` | `username`, `password`, `confirm_password`, `email`, `administrator` | Conforme configuração do OTS |
 | Vincular grupo | `/api/users/groups` | `PUT` | `username`, `groups[]`, `direction` | Conforme configuração do OTS |
+| Remover usuário | `/api/user/delete` | `POST` | `username` | Conforme configuração do OTS |
+| Desativar usuário | `/api/user/deactivate` | `POST` | `username` | Conforme configuração do OTS |
+| Habilitar usuário | `/api/user/activate` | `POST` | `username` | Conforme configuração do OTS |
 | QR Android | `/api/atak_qr_string` | `POST` | `username`, `exp`, `nbf`, `max` | Sim |
 | QR iPhone | `/api/itak_qr_string` | `GET` | definido pelo servidor | Sessão autenticada |
 
@@ -217,11 +229,14 @@ A tabela abaixo consolida os campos aceitos pelo `ots_manager.py`. Campos indica
 | Vincular grupo — `/api/users/groups` | `username`, `groups[]` com strings ou objetos de direção, `direction` | Na CLI, `direction` é opcional e assume `BOTH`, executando as associações `IN` e `OUT`. |
 | QR Android — `/api/atak_qr_string` | `username` | `exp` e `max` são **opcionais**. `nbf` é calculado automaticamente somente quando `exp` é informado. Se `exp` e `max` forem omitidos ou `null`, não são enviados e prevalece a política padrão do servidor. |
 | QR iPhone — `/api/itak_qr_string` | Sessão autenticada | Não há campos informados na requisição `GET`; a configuração é retornada pelo servidor. |
-| CLI `create-user` | `--username`, `--password` | `--email`, `--groups`, `--admin`, `--app`, `--exp`, `--max` e `--save-qr` são opcionais. `--app` assume `android`; `--admin` assume falso. |
+| CLI `create-user` | `--username` + `--password` (modo individual) **ou** `--file` (modo lote) | `--username`/`--file` são mutuamente exclusivos. `--email`, `--groups`, `--admin`, `--app`, `--exp`, `--max` e `--save-qr` aplicam-se ao modo individual e são opcionais; `--app` assume `android`, `--admin` assume falso. `--output` aplica-se ao modo lote e assume `resultado_qr_codes.json`. Se alguma flag do modo individual for informada junto com `--file`, a CLI imprime um aviso citando as flags ignoradas e segue com o lote. |
 | CLI `qr` | `--username` | `--app`, `--exp`, `--max` e `--save-qr` são opcionais. `--app` assume `android`. |
 | CLI `create-group` | `--name` | Nenhum. |
 | CLI `link` | `--username`, `--group` | `--direction` é opcional e assume `BOTH`. |
-| CLI `batch` | `--file` | `--output` é opcional e assume `resultado_qr_codes.json`. Dentro de cada registro, `username` e `password` são obrigatórios; `email`, `administrator`, `groups`, `app`, `expiration` e `max_uses` são opcionais. |
+| CLI `batch` *(removido — incorporado ao `create-user`)* | — | O modo lote deixou de ser um comando independente. Use `create-user -f <arquivo> [-o saida.json]` em vez do antigo `batch -f <arquivo> [-o saida.json]`; o comportamento permanece o mesmo (cria grupos, usuários, vínculos de grupo e QR Codes para cada registro). |
+| CLI `delete-user` | `--username` (individual) **ou** `--file` (lote) | `--output` é opcional (somente lote); quando informado, grava um resumo JSON `[{"username": ..., "deleted": true/false}, ...]`. `--file` aceita o mesmo JSON usado por `create-user -f`, lendo somente o campo `username` de cada registro. |
+| CLI `deactivate-user` | `--username` (individual) **ou** `--file` (lote) | Mesmo padrão do `delete-user`; o resumo do lote usa a chave `deactivated` em vez de `deleted`. |
+| CLI `activate-user` | `--username` (individual) **ou** `--file` (lote) | Mesmo padrão do `delete-user`; o resumo do lote usa a chave `activated` em vez de `deleted`. |
 
 #### Resumo dos campos de usuário no lote
 
@@ -237,6 +252,14 @@ A tabela abaixo consolida os campos aceitos pelo `ots_manager.py`. Campos indica
 | `max_uses` | **Não** | Limite de ativações; quando ausente ou `null`, não há limite enviado. |
 
 > **Importante:** `email`, `expiration` e `max_uses` não são campos obrigatórios. A ausência desses campos não impede a criação do usuário nem a geração do QR Code; nesses casos, o servidor aplica os valores e políticas padrão. Já `username` e `password` são indispensáveis para cada usuário. O campo `confirm_password` é obrigatório para a API, mas é gerado automaticamente pelo script e não precisa ser informado separadamente na CLI ou no arquivo JSON.
+
+#### Resumo dos campos de lote para `delete-user`, `deactivate-user` e `activate-user`
+
+Esses três comandos aceitam exatamente o mesmo arquivo JSON usado por `create-user -f` (por exemplo, `users_sample.json`). Somente o campo `username` de cada registro é lido; todos os demais campos (`password`, `groups`, `app`, `expiration`, `max_uses`, etc.) são ignorados. Uma lista simples de strings, como `["usuario1", "usuario2"]`, também é aceita.
+
+| Campo JSON | Obrigatório? | Observação |
+|---|---:|---|
+| `username` | **Sim** | Único campo utilizado. Registros sem esse campo são ignorados, com um aviso impresso na saída padrão. |
 
 ### 6.2 Respostas consideradas sucesso
 
@@ -366,7 +389,53 @@ python ots_manager.py link -u "usuario_global" -g ALL --direction OUT
 
 `ALL` sem sufixo usa `BOTH`; `ALL:IN` usa somente `IN`; `ALL:OUT` usa somente `OUT`.
 
+### 7.11 Remover um usuário
+
+`delete-user` chama `POST /api/user/delete`. Aceita exatamente um entre `-u/--username` (usuário único) ou `-f/--file` (lote):
+
+```bash
+# Remover um único usuário
+python ots_manager.py delete-user -u "piloto1"
+
+# Remover todos os usuários listados em um arquivo JSON (aceita o mesmo arquivo
+# usado por create-user -f; somente o campo "username" de cada registro é lido,
+# todo o restante é ignorado)
+python ots_manager.py delete-user -f users_sample.json -o resultado_delecao.json
+```
+
+Se `-o/--output` for informado no modo lote, um resumo é gravado no formato `[{"username": "...", "deleted": true|false}, ...]`. Uma resposta `404` do servidor (usuário não encontrado) é tratada como um estado final já alcançado e reportada como sucesso.
+
+### 7.12 Desativar um usuário
+
+`deactivate-user` chama `POST /api/user/deactivate` e segue exatamente o mesmo padrão `-u`/`-f`/`-o` do `delete-user`:
+
+```bash
+# Desativar um único usuário
+python ots_manager.py deactivate-user -u "piloto1"
+
+# Desativar todos os usuários listados em um arquivo JSON
+python ots_manager.py deactivate-user -f users_sample.json -o resultado_desativacao.json
+```
+
+O resumo do lote usa a chave `deactivated` em vez de `deleted`.
+
+### 7.13 Habilitar um usuário
+
+`activate-user` chama `POST /api/user/activate` e segue exatamente o mesmo padrão `-u`/`-f`/`-o`:
+
+```bash
+# Habilitar um único usuário
+python ots_manager.py activate-user -u "piloto1"
+
+# Habilitar todos os usuários listados em um arquivo JSON
+python ots_manager.py activate-user -f users_sample.json -o resultado_ativacao.json
+```
+
+O resumo do lote usa a chave `activated` em vez de `deleted`.
+
 ## 8. Provisionamento em lote
+
+> Esta seção cobre o lote de criação, acionado com `create-user -f <arquivo>` (o comando independente `batch` foi removido na versão 1.1.0). Para lote de remoção, desativação ou habilitação — que reaproveitam o mesmo arquivo JSON, mas leem somente o campo `username` — consulte [7.11](#711-remover-um-usuário), [7.12](#712-desativar-um-usuário) e [7.13](#713-habilitar-um-usuário).
 
 ### 8.1 Arquivo `usuarios.json`
 
@@ -428,8 +497,10 @@ As chaves `expiration` e `max_uses` são opcionais. Se estiverem ausentes ou com
 
 ### 8.2 Execução
 
+> **Nota:** o comando independente `batch` foi removido na versão 1.1.0. O provisionamento em lote agora é acionado por meio de `create-user -f <arquivo> [-o <saida>]`.
+
 ```bash
-python ots_manager.py batch \
+python ots_manager.py create-user \
   -f usuarios.json \
   -o resultado_qr_codes.json
 ```
@@ -455,7 +526,7 @@ O processamento:
 ```
 
 ```bash
-python ots_manager.py batch -f usuarios_all.json -o resultado_all.json
+python ots_manager.py create-user -f usuarios_all.json -o resultado_all.json
 ```
 
 `ALL:OUT` usa somente `OUT`; `ALL:IN` usa somente `IN`; `ALL` sem sufixo usa `BOTH`.
@@ -667,8 +738,8 @@ python ots_manager.py create-group -n Patrulha
 # Associação bidirecional
 python ots_manager.py link -u piloto1 -g Patrulha
 
-# Lote
-python ots_manager.py batch -f usuarios.json -o resultado_qr_codes.json
+# Lote (create-user em modo lote, substitui o antigo comando 'batch')
+python ots_manager.py create-user -f usuarios.json -o resultado_qr_codes.json
 
 # Validação sintática
 python -m py_compile ots_manager.py
@@ -683,6 +754,18 @@ python ots_manager.py create-user -u usuario_global_in -p 'Senha123!' -g ALL:IN 
 
 # Associar usuário existente a todos os grupos
 python ots_manager.py link -u usuario_global -g ALL --direction BOTH
+
+# Remover usuário (individual ou em lote)
+python ots_manager.py delete-user -u piloto1
+python ots_manager.py delete-user -f usuarios.json -o resultado_delecao.json
+
+# Desativar usuário (individual ou em lote)
+python ots_manager.py deactivate-user -u piloto1
+python ots_manager.py deactivate-user -f usuarios.json -o resultado_desativacao.json
+
+# Habilitar usuário (individual ou em lote)
+python ots_manager.py activate-user -u piloto1
+python ots_manager.py activate-user -f usuarios.json -o resultado_ativacao.json
 ```
 
 ## 15. Apêndice: estrutura do código
@@ -695,6 +778,9 @@ O arquivo `ots_manager.py` está organizado pelas funções abaixo:
 | `login()` | Autentica e atualiza os cabeçalhos |
 | `create_group()` | Cria ou confirma um grupo |
 | `create_user()` | Cria ou confirma um usuário |
+| `delete_user()` | Remove um usuário (`POST /api/user/delete`) |
+| `deactivate_user()` | Desativa um usuário (`POST /api/user/deactivate`) |
+| `activate_user()` | Habilita um usuário (`POST /api/user/activate`) |
 | `add_user_to_group()` | Associa grupos em `IN`, `OUT` ou `BOTH` |
 | `parse_expiration()` | Converte dias/data para Unix Epoch |
 | `get_qr_string()` | Obtém a configuração Android ou iPhone |
@@ -703,7 +789,11 @@ O arquivo `ots_manager.py` está organizado pelas funções abaixo:
 | `list_users()` | Lista usuários e resume administrador/último login |
 | `list_groups()` | Recupera os grupos atuais do servidor |
 | `list_users()` | Lista usuários, administrador e último login |
-| `process_batch_list()` | Orquestra o lote e expande `ALL` |
+| `extract_usernames()` | Extrai somente o campo `username` de um lote (aceita o JSON original de criação) |
+| `process_batch_list()` | Orquestra o lote de criação e expande `ALL` (acionado por `create-user -f`) |
+| `process_batch_delete()` | Orquestra a remoção em lote de usuários |
+| `process_batch_deactivate()` | Orquestra a desativação em lote de usuários |
+| `process_batch_activate()` | Orquestra a habilitação em lote de usuários |
 | `main()` | Define a CLI e despacha os comandos |
 
 ### Encerramento
@@ -712,7 +802,7 @@ O OTS Manager reduz tarefas manuais e padroniza o provisionamento no OpenTAKServ
 
 ---
 
-**OTS Manager CLI & Batch — Versão 1.0.1**  
+**OTS Manager CLI & Batch — Versão 1.1.0**  
 **Criado por Orlando Nascimento Santos — onascimento@gmail.com**
 
 *Documento elaborado com base na especificação e no código-fonte fornecidos no manual original.*

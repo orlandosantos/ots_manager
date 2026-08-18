@@ -303,6 +303,75 @@ def create_user(username, password, email="", is_admin=False):
     return False
 
 
+def delete_user(username):
+  """Remove um usuário do OpenTAKServer (POST /api/user/delete)."""
+  url = f"{OTS_URL}/api/user/delete"
+  payload = {"username": username}
+
+  csrf = get_csrf_token()
+  headers = {"X-CSRFToken": csrf, "X-CSRF-TOKEN": csrf} if csrf else {}
+
+  response = session.post(url, json=payload, headers=headers)
+  if response.status_code in [200, 201, 204]:
+    print(f"[+] Usuário '{username}' removido com sucesso.")
+    return True
+  elif response.status_code == 404:
+    print(f"[!] O usuário '{username}' não foi encontrado.")
+    return True
+  else:
+    print(
+        f"[-] Erro ao remover usuário '{username}': {response.status_code} -"
+        f" {response.text}"
+    )
+    return False
+
+
+def deactivate_user(username):
+  """Desativa um usuário no OpenTAKServer (POST /api/user/deactivate)."""
+  url = f"{OTS_URL}/api/user/deactivate"
+  payload = {"username": username}
+
+  csrf = get_csrf_token()
+  headers = {"X-CSRFToken": csrf, "X-CSRF-TOKEN": csrf} if csrf else {}
+
+  response = session.post(url, json=payload, headers=headers)
+  if response.status_code in [200, 201, 204]:
+    print(f"[+] Usuário '{username}' desativado com sucesso.")
+    return True
+  elif response.status_code == 404:
+    print(f"[!] O usuário '{username}' não foi encontrado.")
+    return True
+  else:
+    print(
+        f"[-] Erro ao desativar usuário '{username}': {response.status_code}"
+        f" - {response.text}"
+    )
+    return False
+
+
+def activate_user(username):
+  """Habilita um usuário no OpenTAKServer (POST /api/user/activate)."""
+  url = f"{OTS_URL}/api/user/activate"
+  payload = {"username": username}
+
+  csrf = get_csrf_token()
+  headers = {"X-CSRFToken": csrf, "X-CSRF-TOKEN": csrf} if csrf else {}
+
+  response = session.post(url, json=payload, headers=headers)
+  if response.status_code in [200, 201, 204]:
+    print(f"[+] Usuário '{username}' habilitado com sucesso.")
+    return True
+  elif response.status_code == 404:
+    print(f"[!] O usuário '{username}' não foi encontrado.")
+    return True
+  else:
+    print(
+        f"[-] Erro ao habilitar usuário '{username}': {response.status_code}"
+        f" - {response.text}"
+    )
+    return False
+
+
 def add_user_to_group(username, group_name, direction="BOTH"):
   """Associa um usuário a um grupo no OpenTAKServer (IN, OUT ou BOTH)."""
   url = f"{OTS_URL}/api/users/groups"
@@ -548,6 +617,83 @@ def process_batch_list(
   print(f"\n[+] Relatório consolidado exportado para: {output_summary_file}")
 
 
+def extract_usernames(data_list):
+  """Extrai somente os nomes de usuário de um lote.
+
+  Aceita tanto uma lista de strings quanto o mesmo arquivo JSON original
+  usado para criação (lista de objetos com a chave 'username'), ignorando
+  os demais campos (senha, grupos, etc.).
+  """
+  usernames = []
+  for item in data_list:
+    if isinstance(item, str):
+      username = item
+    elif isinstance(item, dict):
+      username = item.get("username")
+    else:
+      username = None
+
+    if username:
+      usernames.append(username)
+    else:
+      print(f"[-] Registro ignorado (username ausente): {item}")
+  return usernames
+
+
+def process_batch_delete(data_list, output_summary_file=None):
+  """Processa remoção em lote de usuários (aceita o JSON original de criação)."""
+  usernames = extract_usernames(data_list)
+  results = []
+
+  print("\n--- Processando Remoção de Usuários ---")
+  for username in usernames:
+    success = delete_user(username)
+    results.append({"username": username, "deleted": success})
+
+  if output_summary_file:
+    with open(output_summary_file, "w", encoding="utf-8") as f:
+      json.dump(results, f, indent=2, ensure_ascii=False)
+    print(f"\n[+] Relatório consolidado exportado para: {output_summary_file}")
+
+  return results
+
+
+def process_batch_deactivate(data_list, output_summary_file=None):
+  """Processa desativação em lote de usuários (aceita o JSON original de criação)."""
+  usernames = extract_usernames(data_list)
+  results = []
+
+  print("\n--- Processando Desativação de Usuários ---")
+  for username in usernames:
+    success = deactivate_user(username)
+    results.append({"username": username, "deactivated": success})
+
+  if output_summary_file:
+    with open(output_summary_file, "w", encoding="utf-8") as f:
+      json.dump(results, f, indent=2, ensure_ascii=False)
+    print(f"\n[+] Relatório consolidado exportado para: {output_summary_file}")
+
+  return results
+
+
+def process_batch_activate(data_list, output_summary_file=None):
+  """Processa habilitação em lote de usuários (aceita o JSON original de criação)."""
+  usernames = extract_usernames(data_list)
+  results = []
+
+  print("\n--- Processando Habilitação de Usuários ---")
+  for username in usernames:
+    success = activate_user(username)
+    results.append({"username": username, "activated": success})
+
+  if output_summary_file:
+    with open(output_summary_file, "w", encoding="utf-8") as f:
+      json.dump(results, f, indent=2, ensure_ascii=False)
+    print(f"\n[+] Relatório consolidado exportado para: {output_summary_file}")
+
+  return results
+
+
 def main():
   parser = argparse.ArgumentParser(
       description=(
@@ -560,12 +706,28 @@ def main():
 
   # Comando: create-user
   cmd_user = subparsers.add_parser(
-      "create-user", help="Cria usuário e gera QR Code"
+      "create-user",
+      help="Cria usuário(s) e gera QR Code (individual ou em lote)",
+  )
+  create_target = cmd_user.add_mutually_exclusive_group(required=True)
+  create_target.add_argument(
+      "-u", "--username", help="Nome de usuário (criação individual)"
+  )
+  create_target.add_argument(
+      "-f",
+      "--file",
+      help=(
+          "Arquivo JSON em lote. Aceita o mesmo formato de"
+          " 'users_sample.json', criando grupos, usuários, vínculos e QR"
+          " Codes para cada registro."
+      ),
   )
   cmd_user.add_argument(
-      "-u", "--username", required=True, help="Nome de usuário"
+      "-p",
+      "--password",
+      default=None,
+      help="Senha (obrigatório na criação individual, ou seja, com -u)",
   )
-  cmd_user.add_argument("-p", "--password", required=True, help="Senha")
   cmd_user.add_argument("-e", "--email", default="", help="E-mail")
   cmd_user.add_argument(
       "-g",
@@ -598,6 +760,12 @@ def main():
       help="Máximo de ativações. Se omitido, não é enviado.",
   )
   cmd_user.add_argument("--save-qr", help="Caminho do arquivo PNG de saída")
+  cmd_user.add_argument(
+      "-o",
+      "--output",
+      default="resultado_qr_codes.json",
+      help="Arquivo JSON de saída com os resultados (somente em lote)",
+  )
 
   # Comando: qr
   cmd_qr = subparsers.add_parser(
@@ -653,18 +821,75 @@ def main():
       help="Direção da associação (padrão: BOTH)",
   )
 
-  # Comando: batch
-  cmd_batch = subparsers.add_parser(
-      "batch", help="Processa arquivo JSON em lote"
+  # Comando: delete-user
+  cmd_delete = subparsers.add_parser(
+      "delete-user", help="Remove um usuário (individual ou em lote)"
   )
-  cmd_batch.add_argument(
-      "-f", "--file", required=True, help="Arquivo JSON de entrada"
+  delete_target = cmd_delete.add_mutually_exclusive_group(required=True)
+  delete_target.add_argument(
+      "-u", "--username", help="Nome de usuário a remover"
   )
-  cmd_batch.add_argument(
+  delete_target.add_argument(
+      "-f",
+      "--file",
+      help=(
+          "Arquivo JSON em lote. Aceita o mesmo arquivo usado em 'batch',"
+          " extraindo somente o campo 'username' de cada registro."
+      ),
+  )
+  cmd_delete.add_argument(
       "-o",
       "--output",
-      default="resultado_qr_codes.json",
-      help="Arquivo JSON de saída com os resultados",
+      default=None,
+      help="Arquivo JSON de saída com os resultados (somente em lote)",
+  )
+
+  # Comando: deactivate-user
+  cmd_deactivate = subparsers.add_parser(
+      "deactivate-user", help="Desativa um usuário (individual ou em lote)"
+  )
+  deactivate_target = cmd_deactivate.add_mutually_exclusive_group(
+      required=True
+  )
+  deactivate_target.add_argument(
+      "-u", "--username", help="Nome de usuário a desativar"
+  )
+  deactivate_target.add_argument(
+      "-f",
+      "--file",
+      help=(
+          "Arquivo JSON em lote. Aceita o mesmo arquivo usado em 'batch',"
+          " extraindo somente o campo 'username' de cada registro."
+      ),
+  )
+  cmd_deactivate.add_argument(
+      "-o",
+      "--output",
+      default=None,
+      help="Arquivo JSON de saída com os resultados (somente em lote)",
+  )
+
+  # Comando: activate-user
+  cmd_activate = subparsers.add_parser(
+      "activate-user", help="Habilita um usuário (individual ou em lote)"
+  )
+  activate_target = cmd_activate.add_mutually_exclusive_group(required=True)
+  activate_target.add_argument(
+      "-u", "--username", help="Nome de usuário a habilitar"
+  )
+  activate_target.add_argument(
+      "-f",
+      "--file",
+      help=(
+          "Arquivo JSON em lote. Aceita o mesmo arquivo usado em 'batch',"
+          " extraindo somente o campo 'username' de cada registro."
+      ),
+  )
+  cmd_activate.add_argument(
+      "-o",
+      "--output",
+      default=None,
+      help="Arquivo JSON de saída com os resultados (somente em lote)",
   )
 
   args = parser.parse_args()
@@ -677,35 +902,75 @@ def main():
     sys.exit(1)
 
   if args.command == "create-user":
-    parsed_groups = [parse_group_entry(g) for g in args.groups]
+    if args.file:
+      ignored_flags = []
+      if args.password is not None:
+        ignored_flags.append("-p/--password")
+      if args.email:
+        ignored_flags.append("-e/--email")
+      if args.groups:
+        ignored_flags.append("-g/--groups")
+      if args.admin:
+        ignored_flags.append("--admin")
+      if args.app != "android":
+        ignored_flags.append("--app")
+      if args.exp is not None:
+        ignored_flags.append("--exp")
+      if args.max is not None:
+        ignored_flags.append("--max")
+      if args.save_qr is not None:
+        ignored_flags.append("--save-qr")
 
-    # Cria os grupos primeiro (ignora ALL, que será expandido)
-    for g_name, _ in parsed_groups:
-      if g_name and str(g_name).upper() != "ALL":
-        create_group(g_name)
+      if ignored_flags:
+        print(
+            "[!] Modo lote (-f/--file) ativo: os parâmetros"
+            f" {', '.join(ignored_flags)} serão ignorados. Defina esses"
+            " valores por registro dentro do arquivo JSON."
+        )
 
-    # Cria o usuário e associa nas direções especificadas
-    if create_user(args.username, args.password, args.email, args.admin):
-      for g_name, g_dir in parsed_groups:
-        if g_name:
-          if str(g_name).upper() == "ALL":
-            existing = list_groups()
-            for ex in existing:
-              add_user_to_group(args.username, ex, direction=g_dir)
-          else:
-            add_user_to_group(args.username, g_name, direction=g_dir)
+      try:
+        with open(args.file, "r", encoding="utf-8") as f:
+          data_list = json.load(f)
+        process_batch_list(data_list, output_summary_file=args.output)
+      except Exception as e:
+        print(f"[-] Erro ao processar arquivo batch: {e}")
+    else:
+      if not args.password:
+        print(
+            "[-] O parâmetro -p/--password é obrigatório na criação"
+            " individual de usuário (uso com -u/--username)."
+        )
+        sys.exit(1)
 
-      exp_ts = parse_expiration(args.exp)
-      qr_string = get_qr_string(
-          username=args.username,
-          app_type=args.app,
-          exp_timestamp=exp_ts,
-          max_uses=args.max,
-      )
-      if qr_string:
-        print(f"[+] QR String gerada: {qr_string}")
-        output_file = args.save_qr or f"{args.username}_{args.app}.png"
-        save_qr_code_image(qr_string, output_file)
+      parsed_groups = [parse_group_entry(g) for g in args.groups]
+
+      # Cria os grupos primeiro (ignora ALL, que será expandido)
+      for g_name, _ in parsed_groups:
+        if g_name and str(g_name).upper() != "ALL":
+          create_group(g_name)
+
+      # Cria o usuário e associa nas direções especificadas
+      if create_user(args.username, args.password, args.email, args.admin):
+        for g_name, g_dir in parsed_groups:
+          if g_name:
+            if str(g_name).upper() == "ALL":
+              existing = list_groups()
+              for ex in existing:
+                add_user_to_group(args.username, ex, direction=g_dir)
+            else:
+              add_user_to_group(args.username, g_name, direction=g_dir)
+
+        exp_ts = parse_expiration(args.exp)
+        qr_string = get_qr_string(
+            username=args.username,
+            app_type=args.app,
+            exp_timestamp=exp_ts,
+            max_uses=args.max,
+        )
+        if qr_string:
+          print(f"[+] QR String gerada: {qr_string}")
+          output_file = args.save_qr or f"{args.username}_{args.app}.png"
+          save_qr_code_image(qr_string, output_file)
 
   elif args.command == "qr":
     exp_ts = parse_expiration(args.exp)
@@ -754,13 +1019,38 @@ def main():
     else:
       add_user_to_group(args.username, args.group, direction=args.direction)
 
-  elif args.command == "batch":
-    try:
-      with open(args.file, "r", encoding="utf-8") as f:
-        data_list = json.load(f)
-      process_batch_list(data_list, output_summary_file=args.output)
-    except Exception as e:
-      print(f"[-] Erro ao processar arquivo batch: {e}")
+  elif args.command == "delete-user":
+    if args.file:
+      try:
+        with open(args.file, "r", encoding="utf-8") as f:
+          data_list = json.load(f)
+        process_batch_delete(data_list, output_summary_file=args.output)
+      except Exception as e:
+        print(f"[-] Erro ao processar arquivo de remoção em lote: {e}")
+    else:
+      delete_user(args.username)
+
+  elif args.command == "deactivate-user":
+    if args.file:
+      try:
+        with open(args.file, "r", encoding="utf-8") as f:
+          data_list = json.load(f)
+        process_batch_deactivate(data_list, output_summary_file=args.output)
+      except Exception as e:
+        print(f"[-] Erro ao processar arquivo de desativação em lote: {e}")
+    else:
+      deactivate_user(args.username)
+
+  elif args.command == "activate-user":
+    if args.file:
+      try:
+        with open(args.file, "r", encoding="utf-8") as f:
+          data_list = json.load(f)
+        process_batch_activate(data_list, output_summary_file=args.output)
+      except Exception as e:
+        print(f"[-] Erro ao processar arquivo de habilitação em lote: {e}")
+    else:
+      activate_user(args.username)
 
 
 if __name__ == "__main__":

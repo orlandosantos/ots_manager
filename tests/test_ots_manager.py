@@ -303,9 +303,9 @@ def test_process_batch_skip_and_main_errors(monkeypatch, capsys):
     out = '/tmp/nonexistent.json'
     ots_manager.process_batch_list(data, output_summary_file=out)
 
-    # main batch error handling when file not found
+    # main batch (create-user -f) error handling when file not found
     monkeypatch.setattr(ots_manager, 'login', lambda: True)
-    monkeypatch.setattr(sys, 'argv', ['prog','batch','-f','nope.json'])
+    monkeypatch.setattr(sys, 'argv', ['prog','create-user','-f','nope.json'])
     ots_manager.main()
     captured = capsys.readouterr()
     assert 'Erro ao processar arquivo batch' in captured.out or 'Erro' in captured.out
@@ -379,14 +379,14 @@ def test_main_other_cli_paths(monkeypatch, tmp_path):
     ots_manager.main()
     assert calls and calls[0][1] == 'G1'
 
-    # batch success (main) -> mock process_batch_list
+    # batch success (main, now under create-user -f) -> mock process_batch_list
     called_batch = {}
     monkeypatch.setattr(ots_manager, 'login', lambda: True)
     monkeypatch.setattr(ots_manager, 'process_batch_list', lambda data, output_summary_file=None: called_batch.setdefault('ok', True))
     # create a temp json file
     f = tmp_path / 'b.json'
     f.write_text('[]', encoding='utf-8')
-    monkeypatch.setattr(sys, 'argv', ['prog','batch','-f',str(f),'-o','out.json'])
+    monkeypatch.setattr(sys, 'argv', ['prog','create-user','-f',str(f),'-o','out.json'])
     ots_manager.main()
     assert called_batch.get('ok') is True
 
@@ -442,6 +442,39 @@ def test_main_create_user_non_all(monkeypatch):
         assert ('x','G1') in calls['linked']
 
 
+def test_main_create_user_missing_password(monkeypatch, capsys):
+        monkeypatch.setattr(ots_manager, 'login', lambda: True)
+        monkeypatch.setattr(sys, 'argv', ['prog', 'create-user', '-u', 'x'])
+        with pytest.raises(SystemExit) as exc_info:
+            ots_manager.main()
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert '-p/--password' in captured.out
+
+
+def test_main_create_user_and_batch_mutually_exclusive(monkeypatch):
+        monkeypatch.setattr(ots_manager, 'login', lambda: True)
+        monkeypatch.setattr(sys, 'argv', ['prog', 'create-user', '-u', 'x', '-f', 'file.json'])
+        with pytest.raises(SystemExit):
+            ots_manager.main()
+
+
+@pytest.mark.parametrize('command', ['create-user', 'delete-user', 'deactivate-user', 'activate-user'])
+def test_main_requires_username_or_file(monkeypatch, command):
+        monkeypatch.setattr(ots_manager, 'login', lambda: True)
+        monkeypatch.setattr(sys, 'argv', ['prog', command])
+        with pytest.raises(SystemExit):
+            ots_manager.main()
+
+
+@pytest.mark.parametrize('command', ['delete-user', 'deactivate-user', 'activate-user'])
+def test_main_lifecycle_commands_and_batch_mutually_exclusive(monkeypatch, command):
+        monkeypatch.setattr(ots_manager, 'login', lambda: True)
+        monkeypatch.setattr(sys, 'argv', ['prog', command, '-u', 'x', '-f', 'file.json'])
+        with pytest.raises(SystemExit):
+            ots_manager.main()
+
+
 def test_main_list_groups_no_results(monkeypatch, capsys):
         monkeypatch.setattr(ots_manager, 'login', lambda: True)
         monkeypatch.setattr(ots_manager, 'list_groups', lambda: [])
@@ -449,6 +482,244 @@ def test_main_list_groups_no_results(monkeypatch, capsys):
         ots_manager.main()
         captured = capsys.readouterr()
         assert 'Nenhum grupo encontrado' in captured.out
+
+
+def test_delete_user_variants(monkeypatch):
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=200))
+    assert ots_manager.delete_user('u') is True
+
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=404, text='not found'))
+    assert ots_manager.delete_user('u') is True
+
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=500, text='err'))
+    assert ots_manager.delete_user('u') is False
+
+
+def test_deactivate_user_variants(monkeypatch):
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=204))
+    assert ots_manager.deactivate_user('u') is True
+
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=404, text='not found'))
+    assert ots_manager.deactivate_user('u') is True
+
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=500, text='err'))
+    assert ots_manager.deactivate_user('u') is False
+
+
+def test_activate_user_variants(monkeypatch):
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=200))
+    assert ots_manager.activate_user('u') is True
+
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=404, text='not found'))
+    assert ots_manager.activate_user('u') is True
+
+    monkeypatch.setattr(ots_manager.session, 'post', lambda url, json=None, headers=None: DummyResp(status_code=500, text='err'))
+    assert ots_manager.activate_user('u') is False
+
+
+def test_extract_usernames_variants(capsys):
+    data = ['u1', {'username': 'u2', 'password': 'p'}, {'password': 'no-username'}, 123]
+    result = ots_manager.extract_usernames(data)
+    assert result == ['u1', 'u2']
+    captured = capsys.readouterr()
+    assert 'Registro ignorado' in captured.out
+
+
+def test_process_batch_delete(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(ots_manager, 'delete_user', lambda u: calls.append(u) or (u != 'bad'))
+    data = ['u1', {'username': 'u2'}, {'username': 'bad'}]
+    out_file = tmp_path / 'del.json'
+    results = ots_manager.process_batch_delete(data, output_summary_file=str(out_file))
+    assert calls == ['u1', 'u2', 'bad']
+    assert results == [
+        {'username': 'u1', 'deleted': True},
+        {'username': 'u2', 'deleted': True},
+        {'username': 'bad', 'deleted': False},
+    ]
+    assert out_file.exists()
+    assert json.loads(out_file.read_text(encoding='utf-8')) == results
+
+
+def test_process_batch_delete_no_output(monkeypatch):
+    monkeypatch.setattr(ots_manager, 'delete_user', lambda u: True)
+    results = ots_manager.process_batch_delete(['u1'])
+    assert results == [{'username': 'u1', 'deleted': True}]
+
+
+def test_process_batch_deactivate(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(ots_manager, 'deactivate_user', lambda u: calls.append(u) or (u != 'bad'))
+    data = ['u1', {'username': 'u2'}, {'username': 'bad'}]
+    out_file = tmp_path / 'deact.json'
+    results = ots_manager.process_batch_deactivate(data, output_summary_file=str(out_file))
+    assert calls == ['u1', 'u2', 'bad']
+    assert results == [
+        {'username': 'u1', 'deactivated': True},
+        {'username': 'u2', 'deactivated': True},
+        {'username': 'bad', 'deactivated': False},
+    ]
+    assert out_file.exists()
+    assert json.loads(out_file.read_text(encoding='utf-8')) == results
+
+
+def test_process_batch_deactivate_no_output(monkeypatch):
+    monkeypatch.setattr(ots_manager, 'deactivate_user', lambda u: True)
+    results = ots_manager.process_batch_deactivate(['u1'])
+    assert results == [{'username': 'u1', 'deactivated': True}]
+
+
+def test_process_batch_activate(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(ots_manager, 'activate_user', lambda u: calls.append(u) or (u != 'bad'))
+    data = ['u1', {'username': 'u2'}, {'username': 'bad'}]
+    out_file = tmp_path / 'act.json'
+    results = ots_manager.process_batch_activate(data, output_summary_file=str(out_file))
+    assert calls == ['u1', 'u2', 'bad']
+    assert results == [
+        {'username': 'u1', 'activated': True},
+        {'username': 'u2', 'activated': True},
+        {'username': 'bad', 'activated': False},
+    ]
+    assert out_file.exists()
+    assert json.loads(out_file.read_text(encoding='utf-8')) == results
+
+
+def test_process_batch_activate_no_output(monkeypatch):
+    monkeypatch.setattr(ots_manager, 'activate_user', lambda u: True)
+    results = ots_manager.process_batch_activate(['u1'])
+    assert results == [{'username': 'u1', 'activated': True}]
+
+
+def test_main_create_user_batch_warns_on_ignored_single_flags(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    monkeypatch.setattr(ots_manager, 'process_batch_list', lambda data, output_summary_file=None: None)
+    f = tmp_path / 'b.json'
+    f.write_text('[]', encoding='utf-8')
+    monkeypatch.setattr(sys, 'argv', [
+        'prog', 'create-user', '-f', str(f),
+        '-p', 'Senha123!', '-e', 'a@b.com', '-g', 'G1',
+        '--admin', '--app', 'iphone', '--exp', '30', '--max', '2',
+        '--save-qr', 'out.png',
+    ])
+    ots_manager.main()
+    captured = capsys.readouterr()
+    assert 'Modo lote' in captured.out
+    for flag in ['-p/--password', '-e/--email', '-g/--groups', '--admin', '--app', '--exp', '--max', '--save-qr']:
+        assert flag in captured.out
+
+
+def test_main_create_user_batch_no_warning_when_no_extra_flags(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    monkeypatch.setattr(ots_manager, 'process_batch_list', lambda data, output_summary_file=None: None)
+    f = tmp_path / 'b.json'
+    f.write_text('[]', encoding='utf-8')
+    monkeypatch.setattr(sys, 'argv', ['prog', 'create-user', '-f', str(f)])
+    ots_manager.main()
+    captured = capsys.readouterr()
+    assert 'Modo lote' not in captured.out
+
+
+def test_main_delete_user_single(monkeypatch):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    calls = []
+    monkeypatch.setattr(ots_manager, 'delete_user', lambda u: calls.append(u) or True)
+    monkeypatch.setattr(sys, 'argv', ['prog', 'delete-user', '-u', 'u1'])
+    ots_manager.main()
+    assert calls == ['u1']
+
+
+def test_main_delete_user_batch(monkeypatch, tmp_path):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    called = {}
+
+    def fake_process_batch_delete(data, output_summary_file=None):
+        called['data'] = data
+        called['out'] = output_summary_file
+
+    monkeypatch.setattr(ots_manager, 'process_batch_delete', fake_process_batch_delete)
+    f = tmp_path / 'users.json'
+    f.write_text(json.dumps(['u1', 'u2']), encoding='utf-8')
+    monkeypatch.setattr(sys, 'argv', ['prog', 'delete-user', '-f', str(f), '-o', 'out.json'])
+    ots_manager.main()
+    assert called['data'] == ['u1', 'u2']
+    assert called['out'] == 'out.json'
+
+
+def test_main_delete_user_batch_file_error(monkeypatch, capsys):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    monkeypatch.setattr(sys, 'argv', ['prog', 'delete-user', '-f', 'nope.json'])
+    ots_manager.main()
+    captured = capsys.readouterr()
+    assert 'Erro ao processar arquivo de remoção em lote' in captured.out
+
+
+def test_main_deactivate_user_single(monkeypatch):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    calls = []
+    monkeypatch.setattr(ots_manager, 'deactivate_user', lambda u: calls.append(u) or True)
+    monkeypatch.setattr(sys, 'argv', ['prog', 'deactivate-user', '-u', 'u1'])
+    ots_manager.main()
+    assert calls == ['u1']
+
+
+def test_main_deactivate_user_batch(monkeypatch, tmp_path):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    called = {}
+
+    def fake_process_batch_deactivate(data, output_summary_file=None):
+        called['data'] = data
+        called['out'] = output_summary_file
+
+    monkeypatch.setattr(ots_manager, 'process_batch_deactivate', fake_process_batch_deactivate)
+    f = tmp_path / 'users.json'
+    f.write_text(json.dumps([{'username': 'u1'}]), encoding='utf-8')
+    monkeypatch.setattr(sys, 'argv', ['prog', 'deactivate-user', '-f', str(f), '-o', 'out.json'])
+    ots_manager.main()
+    assert called['data'] == [{'username': 'u1'}]
+    assert called['out'] == 'out.json'
+
+
+def test_main_deactivate_user_batch_file_error(monkeypatch, capsys):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    monkeypatch.setattr(sys, 'argv', ['prog', 'deactivate-user', '-f', 'nope.json'])
+    ots_manager.main()
+    captured = capsys.readouterr()
+    assert 'Erro ao processar arquivo de desativação em lote' in captured.out
+
+
+def test_main_activate_user_single(monkeypatch):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    calls = []
+    monkeypatch.setattr(ots_manager, 'activate_user', lambda u: calls.append(u) or True)
+    monkeypatch.setattr(sys, 'argv', ['prog', 'activate-user', '-u', 'u1'])
+    ots_manager.main()
+    assert calls == ['u1']
+
+
+def test_main_activate_user_batch(monkeypatch, tmp_path):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    called = {}
+
+    def fake_process_batch_activate(data, output_summary_file=None):
+        called['data'] = data
+        called['out'] = output_summary_file
+
+    monkeypatch.setattr(ots_manager, 'process_batch_activate', fake_process_batch_activate)
+    f = tmp_path / 'users.json'
+    f.write_text(json.dumps([{'username': 'u1'}]), encoding='utf-8')
+    monkeypatch.setattr(sys, 'argv', ['prog', 'activate-user', '-f', str(f), '-o', 'out.json'])
+    ots_manager.main()
+    assert called['data'] == [{'username': 'u1'}]
+    assert called['out'] == 'out.json'
+
+
+def test_main_activate_user_batch_file_error(monkeypatch, capsys):
+    monkeypatch.setattr(ots_manager, 'login', lambda: True)
+    monkeypatch.setattr(sys, 'argv', ['prog', 'activate-user', '-f', 'nope.json'])
+    ots_manager.main()
+    captured = capsys.readouterr()
+    assert 'Erro ao processar arquivo de habilitação em lote' in captured.out
 
 
 def test_run_module_main_executes_main(monkeypatch):
