@@ -144,16 +144,20 @@ Não versionar arquivos que contenham senhas, tokens, QR strings ou dados pessoa
 Defina os parâmetros antes da execução:
 
 ```bash
-export OTS_URL="http://opentakserver.example.com:5000"
+export OTS_URL="http://opentakserver.example.com"
 export OTS_USER="admin"
 export OTS_PASS="sua_senha_aqui"
 ```
+
+> **Nota — execução local sem Nginx:** o exemplo acima considera o acesso pelo proxy reverso Nginx, por isso o `OTS_URL` não possui porta explícita. Se o OpenTAKServer for executado localmente e diretamente pela API, sem Nginx, informe a porta da API no `OTS_URL`. A porta padrão da API é **8081**; por exemplo: `http://localhost:8081`.
+
+
 
 O script remove a barra final de `OTS_URL`. Na ausência das variáveis, os valores padrão são:
 
 | Variável | Padrão do código | Recomendação |
 |---|---|---|
-| `OTS_URL` | `http://localhost:5000` | Sempre informar explicitamente |
+| `OTS_URL` | `http://localhost` | Sempre informar explicitamente |
 | `OTS_USER` | `admin` | Usar conta nominal ou de serviço |
 | `OTS_PASS` | `admin_password` | Nunca depender do padrão |
 
@@ -644,7 +648,7 @@ Também é recomendável adicionar testes para `parse_expiration`, seleção dos
 pip install requests qrcode pillow
 
 # Configuração
-export OTS_URL="http://servidor-ots:5000"
+export OTS_URL="http://servidor-ots"
 export OTS_USER="admin"
 export OTS_PASS="..."
 
@@ -721,3 +725,4 @@ Este projeto está licenciado sob a **MIT License**. Consulte o arquivo [LICENSE
 
 **Orlando Nascimento Santos**  
 E-mail: [onascimento@gmail.com](mailto:onascimento@gmail.com)
+

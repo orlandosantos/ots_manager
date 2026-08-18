@@ -1,8 +1,17 @@
 # OTS Manager CLI & Batch
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/) [![OpenTAKServer](https://img.shields.io/badge/OpenTAKServer-REST%20API-0d6b86.svg)](https://github.com/brian7704/OpenTAKServer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Language: English](https://img.shields.io/badge/Language-English-1f6feb.svg)](README.md)
+[![Language: Português do Brasil](https://img.shields.io/badge/Language-Portugu%C3%AAs%20do%20Brasil-009c3b.svg)](README.pt-BR.md)
+[![OpenTAKServer REST API](https://img.shields.io/badge/OpenTAKServer-REST%20API-0d6b86.svg)](https://github.com/brian7704/OpenTAKServer)
+[![Interface: CLI](https://img.shields.io/badge/Interface-CLI%20%2B%20REST%20API-6f42c1.svg)](https://github.com/brian7704/OpenTAKServer)
+[![QR Codes: ATAK/iTAK](https://img.shields.io/badge/QR%20Codes-ATAK%20%2F%20iTAK-orange.svg)](#1-overview)
+
 
 **Languages:** [English](README.md) · [Português do Brasil](README.pt-BR.md)
+
+> **GitHub project tags:** `OpenTAKServer` · `REST API` · `Python` · `CLI` · `ATAK` · `iTAK` · `QR Code` · `identity management` · `group management` · `batch automation`
 
 
 ## Contents
@@ -147,16 +156,19 @@ Do not version files containing passwords, tokens, QR strings, or real personal 
 Set the parameters before execution:
 
 ```bash
-export OTS_URL="http://opentakserver.example.com:5000"
+export OTS_URL="http://opentakserver.example.com"
 export OTS_USER="admin"
 export OTS_PASS="your_password_here"
 ```
+
+> **Note — local execution without Nginx:** the example above assumes access through the Nginx reverse proxy, so `OTS_URL` has no explicit port. If OpenTAKServer is executed locally and directly through the API, without Nginx, add the API port to `OTS_URL`. The default API port is **8081**; for example: `http://localhost:8081`.
+
 
 The script removes the trailing slash from `OTS_URL`. If the variables are absent, the default values are:
 
 | Variable | Code default | Recommendation |
 |---|---|---|
-| `OTS_URL` | `http://localhost:5000` | Always specify explicitly |
+| `OTS_URL` | `http://localhost` | Always specify explicitly |
 | `OTS_USER` | `admin` | Use a named or service account |
 | `OTS_PASS` | `admin_password` | Never rely on the default |
 
@@ -281,7 +293,7 @@ python ots_manager.py create-user -u "tac_commander" -p "AdminPass!" \\
 
 # Using the special group name `ALL`
 When you want to associate a user with every group present on the OpenTAKServer, use `ALL` as the group value. The utility expands `ALL` into the full list returned by the server and performs the requested associations. You can also combine it with a direction, such as `ALL:IN` or `ALL:OUT`.
-```
+
 ```bash
 # Create a user and associate with every group on the server (default direction: BOTH)
 python ots_manager.py create-user -u "global_user" -p "Pass123!" -g ALL --app android
@@ -297,6 +309,7 @@ python ots_manager.py create-user -u "global_user_2" -p "Pass123!" -g ALL:OUT --
 
 # Run a batch where every record uses ALL or ALL:OUT/ALL:IN (see JSON example below)
 python ots_manager.py batch -f usuarios_all.json -o resultado_all.json
+```
 ```
 
 ### 6.4 Direction when linking an existing user
@@ -314,7 +327,7 @@ python ots_manager.py link -u "pilot1" -g "Quick_Response_Force" -d IN
 python ots_manager.py --help
 python ots_manager.py create-user --help
 python ots_manager.py qr --help
-```
+
 ### 7.2 List groups
 
 ```bash
@@ -323,6 +336,7 @@ python ots_manager.py list-groups
 
 The command lists the groups returned by the OpenTAKServer. You can use the special group name `ALL` with `-g` (for example `-g ALL`) when calling `create-user`, `link`, or when a batch record includes `"groups": ["ALL"]`; the utility will expand `ALL` into the full set of groups and perform the requested associations for each.
 
+```
 
 ### List users (admin and last_login)
 
@@ -800,7 +814,7 @@ It is also recommended to add tests for `parse_expiration`, seleção dos endpoi
 pip install requests qrcode pillow
 
 # Configuração
-export OTS_URL="http://servidor-ots:5000"
+export OTS_URL="http://servidor-ots"
 export OTS_USER="admin"
 export OTS_PASS="..."
 
@@ -875,3 +889,4 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE).
 
 **Orlando Nascimento Santos**  
 Email: [onascimento@gmail.com](mailto:onascimento@gmail.com)
+
