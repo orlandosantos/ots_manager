@@ -1,5 +1,6 @@
 # OTS Manager CLI & Batch
 
+[![CI](https://github.com/orlandosantos/ots_manager/actions/workflows/ci.yml/badge.svg)](https://github.com/orlandosantos/ots_manager/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![Language: English](https://img.shields.io/badge/Language-English-1f6feb.svg)](README.md)

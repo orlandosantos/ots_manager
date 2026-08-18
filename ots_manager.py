@@ -798,12 +798,12 @@ def main():
   cmd_group.add_argument("-n", "--name", required=True, help="Nome do grupo")
 
   # Comando: list-groups
-  cmd_list = subparsers.add_parser(
+  subparsers.add_parser(
       "list-groups", help="Lista grupos existentes no OpenTAKServer"
   )
 
   # Comando: list-users
-  cmd_users = subparsers.add_parser(
+  subparsers.add_parser(
       "list-users", help="Lista usuários existentes com admin e último login"
   )
 

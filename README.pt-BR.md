@@ -1,6 +1,6 @@
 # OTS Manager CLI & Batch
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/) [![OpenTAKServer](https://img.shields.io/badge/OpenTAKServer-REST%20API-0d6b86.svg)](https://github.com/brian7704/OpenTAKServer)
+[![CI](https://github.com/orlandosantos/ots_manager/actions/workflows/ci.yml/badge.svg)](https://github.com/orlandosantos/ots_manager/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/) [![OpenTAKServer](https://img.shields.io/badge/OpenTAKServer-REST%20API-0d6b86.svg)](https://github.com/brian7704/OpenTAKServer)
 
 **Idiomas:** [English](README.md) · [Português do Brasil](README.pt-BR.md)
 

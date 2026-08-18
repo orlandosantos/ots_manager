@@ -1,7 +1,5 @@
-import io
 import json
 import sys
-import os
 from types import SimpleNamespace
 import time
 import pytest
