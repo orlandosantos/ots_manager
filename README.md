@@ -17,6 +17,7 @@
 
 ## Contents
 
+- [What's New in Version 1.2.0](#whats-new-in-version-120)
 - [What's New in Version 1.1.0](#whats-new-in-version-110)
 - [What's New in Version 1.0.1](#whats-new-in-version-101)
 - [Overview](#1-overview)
@@ -24,6 +25,19 @@
 - [Batch provisioning](#8-batch-provisioning)
 - [Quick reference](#14-quick-reference)
 - [License](#license)
+
+## What's New in Version 1.2.0
+
+- **Pagination bug fixed in `list-groups` and `list-users`:** OpenTAKServer paginates `/api/groups` and `/api/users` (default `per_page=10`). Previously, `list_groups()`/`list_users()` only read page 1, so servers with more than 10 groups or users silently showed an incomplete list with no total count. Both functions now walk every page and merge the results; the CLI output header now shows the real total, e.g. `Existing groups (16 total):`. If the API-reported `total` ever disagrees with the number of items actually retrieved, a `[!] Warning` message is printed. The page size used while paginating is configurable via `OTS_PAGE_SIZE` (default `100`; the server's own default is `10` if unset).
+- **New `delete-group` command:** removes a group (`DELETE /api/groups?group_name=...`), mirroring the existing `delete-user` idempotent-404 behavior. The server itself refuses to delete the `__ANON__` system group.
+- **New mission (Data Sync) commands:** `create-mission`, `delete-mission`, and `list-missions`, mapped to `POST /api/missions` and `DELETE /api/missions`. `create-mission` supports linking multiple groups by name (including the special value `ALL`), and exposes the mission's other relevant parameters (`--description`, `--classification`, `--tool`, `--default-role`, `--password`, `--keywords`, `--chat-room`, `--base-layer`, `--bbox`, `--path`, `--invite-only`, `--exp`). See [7.14–7.17](#714-delete-a-group).
+- **New `update-user` command:** updates an existing user's password, group memberships, and administrator role — individually (`-u/--username`) or in batch (`-f/--file`, accepting the exact same JSON format as `create-user -f`). See [7.18](#718-update-an-existing-user).
+  - `-p/--password` resets the password (`POST /api/user/password/reset`).
+  - `--admin` / `--no-admin` grants or revokes the administrator role (`POST /api/user/role`).
+  - `-g/--groups` treats the given list as the user's **full desired group state**: the CLI fetches the user's current group memberships (`GET /api/users/groups`), diffs them against what was passed, adds whatever is missing, and removes whatever isn't in the list (`DELETE /api/groups/members`). Omitting `-g` leaves group memberships untouched; passing `-g` with no values clears every membership. Supports the same `GROUP:IN`/`GROUP:OUT`/`GROUP:BOTH`/`ALL` syntax as `create-user`.
+  - Every field is optional and independent — only what's provided gets changed, matching the sparse-update semantics requested.
+- **All script output and CLI help text is now in English.** Every `print()` status message (`[+]`/`[-]`/`[!]`), error message, and `--help` description was translated from Portuguese to English for consistency. Behavior is unchanged — only the text shown on screen differs; scripts that parse the tool's stdout for literal Portuguese strings will need updating.
+- **Single-user QR Codes now default into `qrcodes/`.** `create-user` (single mode) and `qr` previously saved the generated PNG in the current working directory (e.g. `piloto1_android.png`); they now default to `qrcodes/piloto1_android.png`, matching batch mode. `save_qr_code_image()` creates the destination directory automatically if it doesn't exist yet. `--save-qr <path>` still overrides the default and is saved exactly where specified.
 
 ## What's New in Version 1.1.0
 
@@ -169,6 +183,7 @@ Set the parameters before execution:
 export OTS_URL="http://opentakserver.example.com"
 export OTS_USER="admin"
 export OTS_PASS="your_password_here"
+export OTS_PAGE_SIZE=200   # optional — items per page when paginating groups/users/missions
 ```
 
 > **Note — local execution without Nginx:** the example above assumes access through the Nginx reverse proxy, so `OTS_URL` has no explicit port. If OpenTAKServer is executed locally and directly through the API, without Nginx, add the API port to `OTS_URL`. The default API port is **8081**; for example: `http://localhost:8081`.
@@ -181,6 +196,7 @@ The script removes the trailing slash from `OTS_URL`. If the variables are absen
 | `OTS_URL` | `http://localhost` | Always specify explicitly |
 | `OTS_USER` | `admin` | Use a named or service account |
 | `OTS_PASS` | `admin_password` | Never rely on the default |
+| `OTS_PAGE_SIZE` | `100` | Items requested per page when paginating `list-groups`, `list-users`, and `list-missions` (`GET /api/groups`, `GET /api/users`, `GET /api/missions`). All pages are always fetched and merged regardless of this value — it only controls how many HTTP requests are needed. The server default is `10` if the parameter isn't sent at all; there's no known upper limit enforced by the API, so it can be raised (e.g. `1000`) to fetch very large lists in a single request. |
 
 ### 4.1 Connectivity test
 
@@ -221,11 +237,21 @@ Best practices:
 |---|---|---:|---|---|
 | Authentication | `/api/login` | `POST` | `username`, `password` | Initial session |
 | Create group | `/api/groups` | `POST` | `name` | Yes |
+| Delete group | `/api/groups` | `DELETE` | `group_name` (query string) | According to OTS configuration |
+| List groups | `/api/groups` | `GET` | `page`, `per_page` (paginated, `per_page=10` by default) | Authenticated session |
 | Create user | `/api/user/add` | `POST` | `username`, `password`, `confirm_password`, `email`, `administrator` | According to OTS configuration |
+| List users | `/api/users` | `GET` | `page`, `per_page` (paginated, `per_page=10` by default) | Authenticated session |
 | Link group | `/api/users/groups` | `PUT` | `username`, `groups[]`, `direction` | According to OTS configuration |
+| Get user's groups | `/api/users/groups` | `GET` | `username` (query string) | Authenticated session |
+| Unlink group | `/api/groups/members` | `DELETE` | `username`, `group_name`, `direction` (query string) | According to OTS configuration |
+| Reset user password | `/api/user/password/reset` | `POST` | `username`, `new_password` | According to OTS configuration |
+| Set user role(s) | `/api/user/role` | `POST` | `username`, `roles[]` (replaces the full role list) | According to OTS configuration |
 | Delete user | `/api/user/delete` | `POST` | `username` | According to OTS configuration |
 | Deactivate user | `/api/user/deactivate` | `POST` | `username` | According to OTS configuration |
 | Activate user | `/api/user/activate` | `POST` | `username` | According to OTS configuration |
+| Create mission | `/api/missions` | `POST` | `name`, `creator_uid`, `groups[]` (group IDs), other mission fields | Yes |
+| Delete mission | `/api/missions` | `DELETE` | `name` (query string) | According to OTS configuration; requires the `administrator` role |
+| List missions | `/api/missions` | `GET` | `page`, `per_page` (paginated, `per_page=10` by default) | Authenticated session |
 | QR Android | `/api/atak_qr_string` | `POST` | `username`, `exp`, `nbf`, `max` | Yes |
 | QR iPhone | `/api/itak_qr_string` | `GET` | defined by the server | Authenticated session |
 
@@ -244,8 +270,13 @@ The table below consolidates the fields accepted pelo `ots_manager.py`. Fields m
 | CLI `create-user` | `--username` + `--password` (single mode) **or** `--file` (batch mode) | `--username`/`--file` are mutually exclusive. `--email`, `--groups`, `--admin`, `--app`, `--exp`, `--max` and `--save-qr` apply to single mode and are optional; `--app` defaults to `android`, `--admin` defaults to false. `--output` applies to batch mode and defaults to `resultado_qr_codes.json`. If any single-mode flag is passed together with `--file`, the CLI prints a warning naming the ignored flags and proceeds with the batch. |
 | CLI `qr` | `--username` | `--app`, `--exp`, `--max` e `--save-qr` are optional. `--app` defaults to `android`. |
 | CLI `create-group` | `--name` | Nenhum. |
+| CLI `delete-group` | `--name` | Nenhum. The `__ANON__` system group cannot be deleted; the server returns an error and the command reports failure. |
+| CLI `create-mission` | `--name` + one of `--creator-uid` **or** `--creator-username` (mutually exclusive) | `--groups` (accepts multiple names and the special value `ALL`), `--description`, `--classification`, `--tool`, `--default-role`, `--password`, `--keywords`, `--chat-room`, `--base-layer`, `--bbox`, `--path`, `--invite-only`, `--exp` are all optional; when omitted, the field is not sent and the server applies its own default. `--creator-username` resolves to the UID of that user's first registered EUD (device); creation fails if the user has none. |
+| CLI `delete-mission` | `--name` | Nenhum. Requires administrator privileges on the server. |
+| CLI `list-missions` | — | Nenhum. |
 | CLI `link` | `--username`, `--group` | `--direction` is optional and defaults to `BOTH`. |
 | CLI `batch` *(removed — merged into `create-user`)* | — | Batch mode is no longer a standalone command. Use `create-user -f <file> [-o output.json]` instead of the old `batch -f <file> [-o output.json]`; behavior is unchanged (creates groups, users, group associations, and QR Codes for every record). |
+| CLI `update-user` | `--username` (single) **or** `--file` (batch) | `--password`, `--groups`, `--admin`/`--no-admin` are all optional and independent (single mode); only what's provided is changed. `--groups` is the full desired group state — omit it to leave memberships untouched, or pass `-g` with no values to clear all of them. `--output` is optional (batch only). `--file` accepts the same JSON used by `create-user -f`; per record, only `password`, `groups`, and `administrator` are applied (`email`, `app`, `expiration`, `max_uses` are ignored). |
 | CLI `delete-user` | `--username` (single) **or** `--file` (batch) | `--output` is optional (batch only); when provided, writes a JSON summary `[{"username": ..., "deleted": true/false}, ...]`. `--file` accepts the same JSON used by `create-user -f`, reading only the `username` field of each record. |
 | CLI `deactivate-user` | `--username` (single) **or** `--file` (batch) | Same pattern as `delete-user`; batch summary uses the `deactivated` key instead of `deleted`. |
 | CLI `activate-user` | `--username` (single) **or** `--file` (batch) | Same pattern as `delete-user`; batch summary uses the `activated` key instead of `deleted`. |
@@ -314,9 +345,9 @@ python ots_manager.py create-user -u "guest_op" -p "TempPass123!" \\
 # Administrator account
 python ots_manager.py create-user -u "tac_commander" -p "AdminPass!" \\
   -g Command:BOTH --admin
+```
 
-# Using the special group name `ALL`
-When you want to associate a user with every group present on the OpenTAKServer, use `ALL` as the group value. The utility expands `ALL` into the full list returned by the server and performs the requested associations. You can also combine it with a direction, such as `ALL:IN` or `ALL:OUT`.
+**Using the special group name `ALL`:** when you want to associate a user with every group present on the OpenTAKServer, use `ALL` as the group value. The utility expands `ALL` into the full list returned by the server and performs the requested associations. You can also combine it with a direction, such as `ALL:IN` or `ALL:OUT`.
 
 ```bash
 # Create a user and associate with every group on the server (default direction: BOTH)
@@ -333,7 +364,6 @@ python ots_manager.py create-user -u "global_user_2" -p "Pass123!" -g ALL:OUT --
 
 # Run a batch where every record uses ALL or ALL:OUT/ALL:IN (see JSON example below)
 python ots_manager.py create-user -f usuarios_all.json -o resultado_all.json
-```
 ```
 
 ### 6.4 Direction when linking an existing user
@@ -360,6 +390,8 @@ python ots_manager.py list-groups
 
 The command lists the groups returned by the OpenTAKServer. You can use the special group name `ALL` with `-g` (for example `-g ALL`) when calling `create-user`, `link`, or when a batch record includes `"groups": ["ALL"]`; the utility will expand `ALL` into the full set of groups and perform the requested associations for each.
 
+> **Pagination:** OpenTAKServer paginates `/api/groups` (`per_page=10` by default). `list-groups` now walks every page automatically and the printed header shows the real total, e.g. `Existing groups (16 total):`. If the server-reported total ever disagrees with the number of items retrieved, a `[!] Warning` message is printed.
+
 ```
 
 ### List users (admin and last_login)
@@ -368,13 +400,13 @@ The command lists the groups returned by the OpenTAKServer. You can use the spec
 python ots_manager.py list-users
 ```
 
-The `list-users` command queries the server's user endpoints and attempts to display a concise summary for each user including:
+The `list-users` command queries the server's user endpoint and attempts to display a concise summary for each user including:
 
 - `username`
 - whether the user is an administrator (detected from direct flags or the `roles` list)
 - `last_login` (ISO or server-provided timestamp, `N/A` if not available)
 
-The command handles common server response shapes and inspects the `roles` objects (name/permissions) to determine administrator privileges.
+The command inspects the `roles` objects (name/permissions) to determine administrator privileges, and — like `list-groups` — walks every page of the paginated `/api/users` endpoint so the total shown always matches the server.
 
 
 ### 7.2 List groups
@@ -425,7 +457,7 @@ python ots_manager.py create-user \
   --app android
 ```
 
-The command creates the group, creates the user, associates the group in the `IN` and `OUT`, requests the string from OTS, and saves a PNG with a default name such as `piloto1_android.png`.
+The command creates the group, creates the user, associates the group in the `IN` and `OUT`, requests the string from OTS, and saves a PNG inside the `qrcodes/` directory with a default name such as `qrcodes/piloto1_android.png`. `--save-qr` overrides this default path.
 
 ### 7.3 Create user e gerar QR Code iPhone
 
@@ -560,6 +592,117 @@ python ots_manager.py activate-user -f users_sample.json -o resultado_ativacao.j
 ```
 
 The batch summary uses the key `activated` instead of `deleted`.
+
+### 7.14 Delete a group
+
+`delete-group` calls `DELETE /api/groups?group_name=...`:
+
+```bash
+python ots_manager.py delete-group -n "Patrulha"
+```
+
+A `404` response (group not found) is treated as an already-achieved end state and reported as success. The `__ANON__` system group cannot be removed — the server rejects the request and the command reports failure.
+
+### 7.15 Create a mission
+
+`create-mission` calls `POST /api/missions`. OpenTAKServer requires a `creator_uid`, which is the UID of an existing EUD (device), not just a username. Provide it directly with `--creator-uid`, or let the CLI resolve it from a username's first registered device with `--creator-username` (the two flags are mutually exclusive):
+
+```bash
+# Using an explicit device UID
+python ots_manager.py create-mission -n "Operacao_CSAR" --creator-uid "ANDROID-abcdef123456"
+
+# Resolving the creator from a username's first EUD
+python ots_manager.py create-mission -n "Operacao_CSAR" --creator-username "organizador"
+```
+
+Link the mission to one or more groups by name — group names are resolved to the numeric IDs the API expects automatically. The special value `ALL` links every group that currently exists on the server:
+
+```bash
+python ots_manager.py create-mission -n "Operacao_CSAR" --creator-username "organizador" \
+  -g CSAR Rescue Command
+
+python ots_manager.py create-mission -n "Operacao_Geral" --creator-username "organizador" -g ALL
+```
+
+Other pertinent mission parameters can be set as needed; any field that is omitted is not sent, and the server applies its own default:
+
+```bash
+python ots_manager.py create-mission -n "Operacao_CSAR" --creator-username "organizador" \
+  -g CSAR \
+  --description "Missão de busca e resgate" \
+  --classification "UNCLASS" \
+  --tool "public" \
+  --default-role "MISSION_SUBSCRIBER" \
+  --password "SenhaMissao!" \
+  --keywords sar resgate csar \
+  --chat-room "Operacao_CSAR" \
+  --invite-only \
+  --exp 30
+```
+
+`--exp` follows the same convention as the `--exp` flag on `create-user`/`qr` (days from now, or a `YYYY-MM-DD` date, converted to a Unix Epoch timestamp); if the mission's `expiration` field on your OTS version expects different units, adjust the value accordingly. If a name passed to `-g/--groups` does not match any existing group, the command aborts and prints which group name(s) were not found — no mission is created.
+
+### 7.16 Delete a mission
+
+`delete-mission` calls `DELETE /api/missions?name=...` and requires administrator privileges on the server:
+
+```bash
+python ots_manager.py delete-mission -n "Operacao_CSAR"
+```
+
+A `404` response (mission not found) is treated as an already-achieved end state and reported as success.
+
+### 7.17 List missions
+
+```bash
+python ots_manager.py list-missions
+```
+
+Lists the missions returned by the server, walking every page of the paginated `/api/missions` endpoint, the same way `list-groups` and `list-users` do.
+
+### 7.18 Update an existing user
+
+`update-user` changes a password, group memberships, and/or the administrator role of a user that already exists. Every field is independent — pass only what you want to change:
+
+```bash
+# Reset the password only
+python ots_manager.py update-user -u "piloto1" -p "NovaSenha123!"
+
+# Promote to administrator (or demote with --no-admin)
+python ots_manager.py update-user -u "piloto1" --admin
+python ots_manager.py update-user -u "piloto1" --no-admin
+
+# Everything at once
+python ots_manager.py update-user -u "piloto1" -p "NovaSenha123!" --admin -g CSAR:IN Rescue
+```
+
+**Group sync.** `-g/--groups` is treated as the user's *complete* desired set of group memberships, using the same syntax as `create-user` (`GRUPO`, `GRUPO:IN`, `GRUPO:OUT`, `GRUPO:BOTH`, and the special value `ALL`). The command:
+
+1. fetches the user's current memberships (`GET /api/users/groups`);
+2. compares them against what was passed;
+3. adds whatever is missing and removes whatever isn't in the list.
+
+```bash
+# User ends up in exactly CSAR (IN) and Rescue (BOTH) — anything else is removed
+python ots_manager.py update-user -u "piloto1" -g CSAR:IN Rescue
+
+# Link every existing group
+python ots_manager.py update-user -u "piloto1" -g ALL
+
+# -g omitted entirely: group memberships are left untouched
+python ots_manager.py update-user -u "piloto1" -p "NovaSenha123!"
+
+# -g passed with no values: removes every current group membership
+python ots_manager.py update-user -u "piloto1" -g
+```
+
+**Batch mode.** `-f/--file` accepts the *exact same JSON file* used by `create-user -f` (e.g. `users_sample.json`). Per record, only `password`, `groups`, and `administrator` are applied as updates; `email`, `app`, `expiration`, and `max_uses` don't apply to an update and are silently ignored:
+
+```bash
+python ots_manager.py update-user -f users_sample.json -o resultado_atualizacao.json
+```
+
+If `-o/--output` is provided, a summary is written with the shape `[{"username": "...", "updated": true|false}, ...]`.
 
 ## 8. Batch provisioning
 
@@ -921,6 +1064,10 @@ python ots_manager.py create-user -u global_user_in -p 'Pass123!' -g ALL:IN --ap
 # Associate an existing user with every group
 python ots_manager.py link -u global_user -g ALL --direction BOTH
 
+# Update a user: password, groups, and/or admin role (single or batch)
+python ots_manager.py update-user -u piloto1 -p 'NovaSenha123!' --admin -g CSAR:IN Rescue
+python ots_manager.py update-user -f usuarios.json -o resultado_atualizacao.json
+
 # Delete a user (single or batch)
 python ots_manager.py delete-user -u piloto1
 python ots_manager.py delete-user -f usuarios.json -o resultado_delecao.json
@@ -932,6 +1079,20 @@ python ots_manager.py deactivate-user -f usuarios.json -o resultado_desativacao.
 # Activate a user (single or batch)
 python ots_manager.py activate-user -u piloto1
 python ots_manager.py activate-user -f usuarios.json -o resultado_ativacao.json
+
+# Delete a group
+python ots_manager.py delete-group -n Patrulha
+
+# Create a mission and link it to groups (creator resolved from a username's first device)
+python ots_manager.py create-mission -n Operacao_CSAR --creator-username organizador -g CSAR Rescue
+
+# Create a mission linked to every group, with extra parameters
+python ots_manager.py create-mission -n Operacao_Geral --creator-username organizador -g ALL \
+  --description "Missão geral" --classification UNCLASS --invite-only --exp 30
+
+# List and delete missions
+python ots_manager.py list-missions
+python ots_manager.py delete-mission -n Operacao_CSAR
 ```
 
 ## 15. Appendix: code structure
@@ -943,20 +1104,33 @@ The `ots_manager.py` file is organized around the following functions:
 | `get_csrf_token()` | Retrieves the CSRF token from the session |
 | `login()` | Authenticates and updates headers |
 | `create_group()` | Creates or confirms a group |
+| `delete_group()` | Removes a group (`DELETE /api/groups`) |
 | `create_user()` | Creates or confirms a user |
+| `update_user()` | Updates an existing user's password, admin role, and/or group sync |
+| `reset_user_password()` | Resets a user's password (`POST /api/user/password/reset`) |
+| `set_user_admin()` | Grants or revokes the administrator role (`POST /api/user/role`) |
+| `get_user_group_memberships()` | Retrieves a user's current group memberships (`GET /api/users/groups`) |
+| `sync_user_groups()` | Diffs desired vs. current group memberships and adds/removes accordingly |
+| `remove_user_from_group()` | Removes a user from a group in one direction (`DELETE /api/groups/members`) |
 | `delete_user()` | Removes a user (`POST /api/user/delete`) |
 | `deactivate_user()` | Deactivates a user (`POST /api/user/deactivate`) |
 | `activate_user()` | Activates a user (`POST /api/user/activate`) |
 | `add_user_to_group()` | Associates groups in `IN`, `OUT` ou `BOTH` |
+| `create_mission()` | Creates a mission, resolving group names to IDs (`POST /api/missions`) |
+| `delete_mission()` | Removes a mission (`DELETE /api/missions`) |
 | `parse_expiration()` | Converts days/date to Unix Epoch |
 | `get_qr_string()` | Gets the Android or iPhone configuration |
 | `save_qr_code_image()` | Generates and saves the PNG image |
-| `list_groups()` | Retrieves the current server group list |
-| `list_users()` | Retrieves users and summarizes admin/last-login data |
-| `list_groups()` | Retrieves the current server groups |
-| `list_users()` | Lists users, administrator status, and last login |
+| `_paginate_all()` | Walks every page of a paginated OTS endpoint and merges the results |
+| `list_groups()` | Retrieves the current server group list (all pages) |
+| `list_users()` | Retrieves users and summarizes admin/last-login data (all pages) |
+| `list_missions()` | Retrieves the current server mission list (all pages) |
+| `get_groups_with_ids()` | Retrieves groups with id and name, used to resolve mission group links |
+| `resolve_group_ids()` | Converts group names into the numeric IDs required by `/api/missions` |
+| `get_creator_uid_for_username()` | Looks up a username's first EUD (device) UID, for `--creator-username` |
 | `extract_usernames()` | Extracts only the `username` field from a batch (accepts the original creation JSON) |
 | `process_batch_list()` | Orchestrates batch provisioning and expands `ALL` (invoked by `create-user -f`) |
+| `process_batch_update()` | Orchestrates batch user updates (password/groups/admin) |
 | `process_batch_delete()` | Orchestrates batch user deletion |
 | `process_batch_deactivate()` | Orchestrates batch user deactivation |
 | `process_batch_activate()` | Orchestrates batch user activation |
@@ -968,7 +1142,7 @@ OTS Manager reduces manual tasks and standardizes OpenTAKServer provisioning. Au
 
 ---
 
-**OTS Manager Operations Manual — Version 1.1.0**  
+**OTS Manager Operations Manual — Version 1.2.0**  
 **Created by Orlando Nascimento Santos — onascimento@gmail.com**
 
 ## License
